@@ -8,7 +8,7 @@
 
 NetEase online library · LX Music custom sources · Live spectrum · Karaoke lyrics · 10-band EQ · Desktop lyrics · Local music
 
-[![Version](https://img.shields.io/badge/version-1.2.2-ff6a2c?style=flat-square)](https://github.com/kedamano/Lonely-Guy-Music/releases)
+[![Version](https://img.shields.io/badge/version-1.2.3-ff6a2c?style=flat-square)](https://github.com/kedamano/Lonely-Guy-Music/releases)
 [![Electron](https://img.shields.io/badge/Electron-44-47848F?style=flat-square&logo=electron&logoColor=white)](https://www.electronjs.org/)
 [![Tests](https://img.shields.io/badge/tests-184%20checks-passing-3fb950?style=flat-square)](#-ui-regression-tests)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-8957e5?style=flat-square)](https://github.com/kedamano/Lonely-Guy-Music/releases)
