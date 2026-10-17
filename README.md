@@ -10,7 +10,7 @@
 
 [![Version](https://img.shields.io/badge/version-1.2.2-ff6a2c?style=flat-square)](https://github.com/kedamano/Lonely-Guy-Music/releases)
 [![Electron](https://img.shields.io/badge/Electron-44-47848F?style=flat-square&logo=electron&logoColor=white)](https://www.electronjs.org/)
-[![Tests](https://img.shields.io/badge/tests-174%20checks-passing-3fb950?style=flat-square)](#-ui-回归测试)
+[![Tests](https://img.shields.io/badge/tests-184%20checks-passing-3fb950?style=flat-square)](#-ui-回归测试)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-8957e5?style=flat-square)](https://github.com/kedamano/Lonely-Guy-Music/releases)
 [![License](https://img.shields.io/badge/license-MIT-c9d1d9?style=flat-square)](LICENSE)
 [![i18n](https://img.shields.io/badge/语言-简体%20%7C%20繁體%20%7C%20EN-ff6a2c?style=flat-square)](#-界面语言)
@@ -301,7 +301,7 @@ QQ / 酷狗曲目的播放地址不走网易云，也不强依赖音源脚本，
 
 ## 🧪 UI 回归测试
 
-基于 Playwright 的真实交互回归（共 **174 项断言**）：
+基于 Playwright 的真实交互回归（共 **184 项断言**）：
 
 ```bash
 npm start                        # 或 ENABLE_NCM=0 node server/index.js
@@ -310,6 +310,8 @@ node scripts/ui-smoke.js         # 64 项全量冒烟（封面加载/分页/设�
 node scripts/proxy-check.js      # 12 项代理机制单测
 node scripts/search-guide-check.js # 19 项搜索引导与多语言检查
 node scripts/platform-url-check.js # 14 项多平台取链（匹配打分 + 酷狗直链 + QQ 兜底）
+node scripts/version-check.js     # 5 项版本号契约（主进程/渲染层不重复加 v）
+npx electron scripts/tray-check.js # 5 项托盘图标（ICO 空图回归 + 真实托盘坐标）
 ```
 
 覆盖范围：实时搜索 / 切 tab / 播放 / 拖拽进度 / 收藏 / 队列 / 歌词浮层 / 声场 EQ 与睡眠 / 本地音频导入播放 / 迷你模式 / 响应式布局 / 全部设置分区 / 封面真实加载断言 / 运行时 console 错误检查。截图输出到 `scripts/shots/`。

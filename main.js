@@ -47,6 +47,10 @@ if (!gotLock) {
     if (tray) tray.displayBalloon({ title: '孤男音乐', content: '程序已在运行，窗口可能最小化在系统托盘。' });
   });
 
+  // Windows 的托盘气泡/通知需要 AppUserModelID 才能投递，且任务栏分组依赖它。
+  // 必须与 electron-builder 的 appId 一致，否则安装版通知会静默丢弃。
+  if (process.platform === 'win32') app.setAppUserModelId('com.guman.music');
+
   // 默认启用在线网易云曲库；设置 ENABLE_NCM=0 可强制离线示例模式
   if (!('ENABLE_NCM' in process.env)) process.env.ENABLE_NCM = '1';
   // 把 Electron userData 目录传给后端，用于持久化音源脚本与配置
@@ -80,8 +84,44 @@ function waitForServer(timeoutMs = 20000) {
   ]).then(() => true).catch((e) => { console.error('[boot] 后端启动失败:', e); return false; });
 }
 
-function createTray(icon) {
-  tray = new Tray(icon);
+/* ---------- 图标解码 ----------
+ * 坑：Windows 下 nativeImage.createFromBuffer 走 Chromium 的 PNG/JPEG 解码器，
+ * 喂 ICO 容器会解出 0x0 空图（实测 empty=true）。拿它建 Tray 不会报错，
+ * 但托盘里只有一个「看不见的空白占位」—— 表现为安装版没有托盘图标。
+ * 所以运行时一律用 PNG buffer；ICO 只交给 electron-builder 写进 exe 资源。
+ */
+function pngIcon(size) {
+  try {
+    const img = nativeImage.createFromBuffer(iconMod.buildPng(size));
+    return img && !img.isEmpty() ? img : null;
+  } catch (e) {
+    mainLog.warn('图标解码失败:', e && e.message);
+    return null;
+  }
+}
+
+// 窗口/任务栏图标：256px PNG，由系统按 DPI 缩放
+function windowIcon() {
+  return pngIcon(256) || undefined;
+}
+
+// 托盘图标：Windows 用 32px（系统再缩到 16），macOS 菜单栏用 22pt
+function trayIcon() {
+  return pngIcon(process.platform === 'darwin' ? 22 : 32);
+}
+
+function createTray() {
+  const icon = trayIcon();
+  if (!icon) {
+    mainLog.error('[tray] 图标解码为空，托盘将不可见');
+    return;
+  }
+  try {
+    tray = new Tray(icon);
+  } catch (e) {
+    mainLog.error('[tray] 创建失败:', e && e.message);
+    return;
+  }
   const ctx = Menu.buildFromTemplate([
     { label: '显示 / 隐藏', click: () => (mainWindow.isVisible() ? mainWindow.hide() : mainWindow.show()) },
     { type: 'separator' },
@@ -99,8 +139,7 @@ function createTray(icon) {
 }
 
 function createWindow() {
-  const { ico } = iconMod.getIconBuffers();
-  const icon = nativeImage.createFromBuffer(ico);
+  const icon = windowIcon();
 
   mainWindow = new BrowserWindow({
     width: 1200,
@@ -146,10 +185,11 @@ function createWindow() {
 
   // 关闭改为最小化到托盘（除非真正退出）
   mainWindow.on('close', (e) => {
-    if (!quitting) {
-      e.preventDefault();
-      mainWindow.hide();
-    }
+    if (quitting) return;
+    // 托盘不可用时隐藏窗口等于「程序凭空消失」，找不到任何入口 —— 此时按退出处理
+    if (!tray || tray.isDestroyed()) { quitting = true; return; }
+    e.preventDefault();
+    mainWindow.hide();
   });
 
   // Windows 媒体键
@@ -162,7 +202,28 @@ function createWindow() {
     if (map[cmd]) mainWindow.webContents.send('player:control', map[cmd]);
   });
 
-  createTray(icon);
+  createTray();
+  maybeShowTrayTip();
+}
+
+/* Windows 11 默认把新出现的托盘图标折叠进任务栏的「^」溢出区，
+ * 用户第一次启动会以为程序「根本没有托盘图标」。首次运行给一次说明，之后不再打扰。 */
+function maybeShowTrayTip() {
+  if (process.platform !== 'win32' || !tray) return;
+  try {
+    const flag = path.join(app.getPath('userData'), '.tray-tip-shown');
+    if (fs.existsSync(flag)) return;
+    fs.writeFileSync(flag, new Date().toISOString());
+    setTimeout(() => {
+      if (!tray || tray.isDestroyed()) return;
+      tray.displayBalloon({
+        title: '孤男音乐已驻留系统托盘',
+        content: '关闭窗口后程序仍在后台播放。若右下角看不到图标，点任务栏的 ^ 展开后把图标拖出来固定即可。',
+      });
+    }, 2500);
+  } catch (e) {
+    mainLog.warn('[tray] 首次提示失败:', e && e.message);
+  }
 }
 
 // ---- IPC：渲染层 → 主进程 ----
