@@ -46,17 +46,14 @@ nsis:
   deleteAppDataOnUninstall: false
 
 # ---- 自动更新发布源（electron-updater）----
-# 当前为占位地址：未配置时启动检查会失败并静默跳过，不影响使用。
-# 自建服务器：保持 provider: generic，把 url 改为实际发布地址。
-# GitHub Releases：改为
-#   publish:
-#     - provider: github
-#       owner: <你的账号>
-#       repo: <仓库名>
-# 并在 CI 中用 GH_TOKEN 发布。
+# 使用 GitHub Releases 作为更新源：应用启动时检查本仓库最新 Release 的 latest.yml。
+# 打包时用 GH_TOKEN 环境变量，electron-builder 可直接上传（--publish always）。
+# 自建服务器：改为 provider: generic + 实际 url。
 publish:
-  - provider: generic
-    url: https://example.com/guman-updates
+  - provider: github
+    owner: kedamano
+    repo: Lonely-Guy-Music
+    releaseType: release
 
 # ---- 代码签名（可选，需要代码签名证书）----
 # 未签名包会被 Windows SmartScreen 拦截，用户点「更多信息 → 仍要运行」即可安装。
