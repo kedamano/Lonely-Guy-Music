@@ -64,8 +64,8 @@ const DEFAULTS = {
   downloadNaming: 'name-artist',// 文件命名方式：name-artist / artist-name / name
 
   /* ---------- 播放进度记忆（内部使用） ---------- */
+  // 进度表已拆到独立 key（guman.progress.v1），不参与主 state 序列化
   lastTrack: null,       // 上次播放的曲目（自动恢复用）
-  lastProgress: {},      // { trackKey: 秒 }
 };
 
 function load() {
@@ -76,7 +76,40 @@ function load() {
 }
 function persist() { try { localStorage.setItem(LS_KEY, JSON.stringify(data)); } catch (_) { /* ignore quota */ } }
 
+/* ---------- 播放进度：独立落盘 ---------- */
+// 播放进度每 5 秒写一次，如果混在主 state 里就要把收藏/历史/歌单全部序列化一遍，
+// 歌单多了之后这一下足够卡住一次点击。拆成独立 key 后单次写入只有几 KB。
+const PROGRESS_KEY = 'guman.progress.v1';
+let progressMap = (() => {
+  try { return JSON.parse(localStorage.getItem(PROGRESS_KEY)) || {}; } catch { return {}; }
+})();
+let progressTimer = null;
+let progressDirty = false;
+function flushProgress() {
+  if (progressTimer) { clearTimeout(progressTimer); progressTimer = null; }
+  if (!progressDirty) return;
+  progressDirty = false;
+  try { localStorage.setItem(PROGRESS_KEY, JSON.stringify(progressMap)); } catch (_) { /* ignore quota */ }
+}
+function saveProgressSoon() {
+  progressDirty = true;
+  if (progressTimer) return;
+  progressTimer = setTimeout(flushProgress, 1000); // 1 秒合并，切歌/暂停时的连续写入只落一次盘
+}
+if (typeof window !== 'undefined') window.addEventListener('pagehide', flushProgress);
+
 const data = load();
+// 旧版本把进度存在主 state 里：迁移到独立 key，并把主 state 里那份清掉，
+// 否则每次 persist 又会把它整包序列化回来。
+if (data.lastProgress) {
+  progressMap = { ...data.lastProgress, ...progressMap };
+  delete data.lastProgress;
+  saveProgressSoon();
+}
+
+// 收藏集合：列表渲染时每行都要判断是否已收藏，数组线性查找在长列表上是 O(n²)
+let favKeys = null;
+const refreshFavKeys = () => { favKeys = new Set((data.favorites || []).map(keyOf)); };
 
 // 会话级（不落盘）
 const session = { library: [], queue: [], queueIndex: -1 };
@@ -99,6 +132,7 @@ export const store = {
       id: String(track.id), name: track.name, artist: track.artist, album: track.album,
       albumPic: track.albumPic, duration: track.duration, source: track.source, url: track.url,
     });
+    refreshFavKeys();
     persist();
     return i < 0; // true 表示刚收藏
   },
@@ -107,10 +141,14 @@ export const store = {
     const key = keyOf(track);
     const i = arr.findIndex((t) => keyOf(t) === key);
     if (i >= 0) arr.splice(i, 1);
+    refreshFavKeys();
     persist();
     return i >= 0;
   },
-  isFav(key) { return (data.favorites || []).some((t) => keyOf(t) === String(key)); },
+  isFav(key) {
+    if (!favKeys) refreshFavKeys();
+    return favKeys.has(String(key));
+  },
 
   /* ---------- 本地命名歌单（落盘） ---------- */
   getSheets() { return (data.sheets || []).slice(); },
@@ -259,17 +297,18 @@ export const store = {
 
   /* ---------- 播放进度记忆 ---------- */
   getProgress(key) {
-    const v = (data.lastProgress || {})[key];
+    const v = progressMap[key];
     return typeof v === 'number' && v > 3 ? v : 0; // 3 秒以内不恢复，避免从片头曲赘述
   },
   setProgress(key, sec) {
-    const m = data.lastProgress || (data.lastProgress = {});
-    m[key] = Math.round(sec);
+    progressMap[key] = Math.round(sec);
     // 只保留最近 100 首，避免无限增长
-    const keys = Object.keys(m);
-    if (keys.length > 100) keys.slice(0, keys.length - 100).forEach((k) => delete m[k]);
-    persist();
+    const keys = Object.keys(progressMap);
+    if (keys.length > 100) keys.slice(0, keys.length - 100).forEach((k) => delete progressMap[k]);
+    saveProgressSoon(); // 独立 key + 1 秒合并，播放中不再反复序列化整份 state
   },
+  /** 立即把待写的播放进度落盘（退出前/测试里用） */
+  flushProgress,
   setLastTrack(track) {
     data.lastTrack = track ? {
       id: track.id, name: track.name, artist: track.artist, album: track.album,

@@ -34,7 +34,13 @@ function check(name, ok, detail = '') {
   await page.waitForTimeout(2500);
   const coverStat = await page.evaluate(() => {
     const covers = [...document.querySelectorAll('.pl-card__cover')];
-    const loaded = covers.filter((c) => !c.classList.contains('is-fallback') && /url\(/.test(getComputedStyle(c).backgroundImage));
+    // 封面现在是 <img class="cover-img">，加载完加 is-ready；旧实现是 background-image，两种都认
+    const loaded = covers.filter((c) => {
+      if (c.classList.contains('is-fallback')) return false;
+      const img = c.querySelector('.cover-img');
+      if (img && img.complete && img.naturalWidth > 0) return true;
+      return /url\(/.test(getComputedStyle(c).backgroundImage);
+    });
     return { total: covers.length, loaded: loaded.length };
   });
   check('发现页封面真实加载（非占位）', coverStat.total > 0 && coverStat.loaded / coverStat.total >= 0.5,
@@ -103,7 +109,10 @@ function check(name, ok, detail = '') {
     // 封面应经同源代理加载成功（background-image 非空且不是破图）
     const coverBg = await page.evaluate(() => {
       const c = document.querySelector('#pbCover');
-      return c ? getComputedStyle(c).backgroundImage : 'none';
+      if (!c) return 'none';
+      const img = c.querySelector('.cover-img');
+      if (img && img.complete && img.naturalWidth > 0) return 'proxy-img:' + img.currentSrc.slice(0, 60);
+      return getComputedStyle(c).backgroundImage;
     });
     check('播放后封面加载成功', coverBg && coverBg !== 'none' && /proxy|126\.net|gradient/.test(coverBg), String(coverBg).slice(0, 90));
   }

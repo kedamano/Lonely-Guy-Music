@@ -22,7 +22,10 @@ export function accountState() { return state; }
 export async function refreshAccount() {
   try {
     const d = await api.accountState();
-    state = { loggedIn: !!d.loggedIn, user: d.user || null, loginAt: Number(d.loginAt || 0), online: !!d.online };
+    const next = { loggedIn: !!d.loggedIn, user: d.user || null, loginAt: Number(d.loginAt || 0), online: !!d.online };
+    // 登录态变了，个性化接口（每日推荐/推荐歌单/我的歌单）的读缓存必须失效，否则会串号
+    if (next.loggedIn !== state.loggedIn || next.user?.userId !== state.user?.userId) api.invalidate();
+    state = next;
   } catch (_) {
     state = { ...state, loggedIn: false, user: null };
   }

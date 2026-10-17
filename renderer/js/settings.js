@@ -99,7 +99,8 @@ export class SettingsView {
     this.refreshLang();
   }
 
-  refreshLang() { applyLang(currentLang()); }
+  // 只补翻本视图的节点，避免整文档重扫
+  refreshLang() { applyLang(currentLang(), this.container); }
 
   // ---------- 音效：场景预设 + 空间宽度 / 混响强度 ----------
   fxRow(sec) {
@@ -473,7 +474,8 @@ export class SettingsView {
     const aboutSec = this.section('关于');
     const modeText = api.lastMode === 'online' ? '在线曲库（网易云）' : '离线示例曲库';
     // 版本号以 package.json 为单一来源（preload 暴露 app.getVersion()）
-    const ver = (window.gm && window.gm.appVersion) || '1.0.0';
+    // 主进程已改为只传裸版本；这里再剥一次前缀，避免旧版主进程带 v 时显示成「v v1.2.1」
+    const ver = String((window.gm && window.gm.appVersion) || '1.0.0').replace(/^v/i, '');
     aboutSec.appendChild(el('p', { class: 'settings__desc' }, `孤男音乐 · 桌面声场 v${ver} · 当前模式：${modeText}。`));
     aboutSec.appendChild(el('p', { class: 'settings__desc' }, '在线曲库依赖第三方接口，仅供学习研究；本地音乐与自定义音源均在本机处理。'));
     if (window.gm && window.gm.electronVersion) {

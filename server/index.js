@@ -424,16 +424,55 @@ app.get('/api/__mode', (req, res) => res.json({ online, host: actualPort, ncm: n
 
 // 同源音频代理：把远程音频（网易云 / 示例曲 / 音源返回链接）转发为同源流，
 // 使渲染层可将其接入 Web Audio（均衡器 + 可视化）而不会因跨域被静音。支持 Range 转发。
+/* ---------- 封面图片缓存 ----------
+ * 同一张封面在发现页/歌单页/播放条会反复出现，早先每次都回源上游，
+ * 一屏 30 张就是 30 次外网往返。图片体积小、内容不变，按 URL 缓存最划算；
+ * 音频不缓存（要支持 Range 拖动，且可能带时效参数）。 */
+const IMG_CACHE_MAX = 160;          // 条目上限
+const IMG_CACHE_BYTES = 64 * 1024 * 1024; // 体积上限
+const imgCache = new Map();
+let imgCacheBytes = 0;
+
+function imgCacheGet(key) {
+  const hit = imgCache.get(key);
+  if (!hit) return null;
+  imgCache.delete(key); imgCache.set(key, hit); // 命中后移到队尾，维持 LRU
+  return hit;
+}
+function imgCacheSet(key, buf, ct) {
+  const old = imgCache.get(key);
+  if (old) { imgCacheBytes -= old.buf.length; imgCache.delete(key); }
+  imgCache.set(key, { buf, ct });
+  imgCacheBytes += buf.length;
+  while (imgCache.size > IMG_CACHE_MAX || imgCacheBytes > IMG_CACHE_BYTES) {
+    const first = imgCache.keys().next().value;
+    if (first === undefined) break;
+    imgCacheBytes -= imgCache.get(first).buf.length;
+    imgCache.delete(first);
+  }
+}
+
 app.get('/api/proxy', async (req, res) => {
   const u = req.query.url;
   if (!u || !/^https?:\/\//.test(u)) return res.status(400).end();
   try {
+    const hit = imgCacheGet(u);
+    if (hit) {
+      res.set('Content-Type', hit.ct || 'image/jpeg');
+      res.set('Cache-Control', 'public, max-age=604800, immutable'); // 一周内不再回源，连 Chromium 也走磁盘缓存
+      res.set('Content-Length', String(hit.buf.length));
+      return res.end(hit.buf);
+    }
     const host = new URL(u).host.toLowerCase();
     const headers = { 'User-Agent': 'Mozilla/5.0' };
     if (host.includes('163.com') || host.includes('netease') || host.includes('126.net')) headers['Referer'] = 'https://music.163.com/';
     if (host.includes('kugou.com')) headers['Referer'] = 'https://www.kugou.com/';
     if (req.headers.range) headers['Range'] = req.headers.range;
-    const upstream = await fetch(u, { headers });
+    let upstream = await fetch(u, { headers });
+    // 上游偶发 5xx（常见于本机代理抖动）直接透传会让封面永久缺失，这里补一次重试
+    if (!upstream.ok && upstream.status >= 500) {
+      try { upstream = await fetch(u, { headers }); } catch (_) { /* 保留首次响应 */ }
+    }
     res.status(upstream.status);
     ['content-length', 'accept-ranges', 'content-range'].forEach((h) => {
       const v = upstream.headers.get(h);
@@ -444,6 +483,15 @@ app.get('/api/proxy', async (req, res) => {
     const upCt = upstream.headers.get('content-type') || '';
     const forceCt = req.query.ct;
     const ct = forceCt && (!upCt || /octet-stream/i.test(upCt)) ? String(forceCt) : upCt;
+    // 图片：读完进内存缓存并给出强缓存头，下次同一张封面零外网往返
+    if (/^image\//i.test(ct || '')) {
+      const buf = Buffer.from(await upstream.arrayBuffer());
+      if (upstream.ok && buf.length) imgCacheSet(u, buf, ct);
+      res.set('Content-Type', ct);
+      res.set('Cache-Control', 'public, max-age=604800, immutable');
+      res.set('Content-Length', String(buf.length));
+      return res.end(buf);
+    }
     if (ct) res.set('content-type', ct);
     if (upstream.body && upstream.body.getReader) {
       const r = Readable.fromWeb(upstream.body);

@@ -68,7 +68,7 @@ async function router() {
   currentRoute = routes[name] ? name : 'discover';
   setActiveNav(currentRoute);
   await (routes[name] || renderDiscover)(token);
-  applyLang(currentLang()); // 新渲染的节点套用当前语言
+  applyLang(currentLang(), view); // 新渲染的节点套用当前语言
 }
 window.addEventListener('hashchange', router);
 
@@ -294,7 +294,7 @@ function paintDaily(sec, data) {
     ]));
   }
   revealIn();
-  applyLang(currentLang());
+  applyLang(currentLang(), view);
 }
 
 /* ---------------- 视图：音乐馆 ---------------- */
@@ -704,7 +704,7 @@ function renderSearchOutput() {
     if (search.pageCount > 1) out.appendChild(searchPager());
     revealIn();
   }
-  applyLang(currentLang()); // 搜索结果刷新后套用当前语言
+  applyLang(currentLang(), view); // 搜索结果刷新后套用当前语言
 }
 
 function buildSearchGuide() {
@@ -958,9 +958,9 @@ function renderMine() {
   const out = el('div', { class: 'reveal' });
   view.appendChild(out);
 
-  if (mineTab === 'sheet') { renderMineSheets(out); revealIn(); applyLang(currentLang()); return; }
-  if (mineTab === 'cloud') { renderMineCloud(out); revealIn(); applyLang(currentLang()); return; }
-  if (mineTab === 'pin') { renderMinePins(out); revealIn(); applyLang(currentLang()); return; }
+  if (mineTab === 'sheet') { renderMineSheets(out); revealIn(); applyLang(currentLang(), view); return; }
+  if (mineTab === 'cloud') { renderMineCloud(out); revealIn(); applyLang(currentLang(), view); return; }
+  if (mineTab === 'pin') { renderMinePins(out); revealIn(); applyLang(currentLang(), view); return; }
 
   if (mineTab === 'queue') {
     if (!player.queue.length) {
@@ -1252,7 +1252,7 @@ async function renderSheet(id, token) {
     if (pg.pageCount > 1) view.appendChild(pg);
   }
   revealIn();
-  applyLang(currentLang());
+  applyLang(currentLang(), view);
 }
 
 /* ---------------- 曲目右键菜单 ---------------- */
@@ -1596,7 +1596,7 @@ async function renderSettings() {
   if (!settingsView) settingsView = new SettingsView(view, toast);
   await settingsView.init();
   revealIn();
-  applyLang(currentLang()); // 重建出来的节点是中文原文，要按当前语言再套一次
+  applyLang(currentLang(), view); // 重建出来的节点是中文原文，要按当前语言再套一次
 }
 
 /* ---------------- 列表分页（客户端切片） ---------------- */
@@ -2147,7 +2147,7 @@ function renderQueue() {
     ]);
     list.appendChild(row);
   });
-  applyLang(currentLang());
+  applyLang(currentLang(), view);
 }
 
 function updateQueueBadge() {

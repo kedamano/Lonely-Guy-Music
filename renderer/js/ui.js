@@ -77,10 +77,15 @@ export const PLATFORM_LABELS = { wy: '网易云', tx: 'QQ 音乐', kg: '酷狗' 
 
 /* ---------------- 封面 ---------------- */
 // 封面统一走同源代理：绕过防盗链/混合内容，与音频同一通道
-export function proxyUrl(url) {
+// size：给网易云封面按显示尺寸要缩略图（原图常见 1000px+，一屏 30 张时浪费带宽和解码）
+export function proxyUrl(url, size = 0) {
   if (!url) return '';
   if (url.startsWith('/') || url.startsWith('blob:') || url.startsWith('data:')) return url;
-  return '/api/proxy?url=' + encodeURIComponent(url);
+  let src = url;
+  if (size && /(^|\.)126\.net\//i.test(src) && !/[?&]param=/i.test(src)) {
+    src += (src.includes('?') ? '&' : '?') + `param=${size}y${size}`;
+  }
+  return '/api/proxy?url=' + encodeURIComponent(src);
 }
 
 export function setCover(node, seed, picUrl) {
@@ -100,16 +105,25 @@ export function setCover(node, seed, picUrl) {
     node.style.backgroundImage = gradientFor(seed || node.id || 'guman');
     node.classList.add('is-fallback');
     node.appendChild(el('div', { class: 'cover-fallback' }, [icon('music')]));
-    // <img> 作为加载探测器：background-image 无法感知失败，img 可以
-    const probe = el('img', { class: 'cover-probe', alt: '', decoding: 'async' });
-    probe.addEventListener('load', () => {
-      node.style.backgroundImage = `url("${proxyUrl(picUrl)}")`;
-      node.classList.remove('is-fallback');
-      node.innerHTML = '';
+    // 图片本身直接可见：早先用「不可见探针 + background-image」两步走，
+    // 同一张图要解码两次；现在加载完只是淡入，省掉一次解码和一次重绘。
+    const img = el('img', {
+      class: 'cover-img',
+      alt: '',
+      decoding: 'async',
+      loading: 'lazy',
+      draggable: 'false',
     });
-    probe.addEventListener('error', () => { probe.remove(); applyFallback(); });
-    node.appendChild(probe); // 必须入文档才会发起加载
-    probe.src = proxyUrl(picUrl);
+    img.addEventListener('load', () => {
+      node.classList.remove('is-fallback');
+      node.style.backgroundImage = 'none';
+      const fb = node.querySelector('.cover-fallback');
+      if (fb) fb.remove();
+      img.classList.add('is-ready');
+    });
+    img.addEventListener('error', () => { img.remove(); applyFallback(); });
+    node.appendChild(img);
+    img.src = proxyUrl(picUrl, 320);
   } else {
     applyFallback();
   }
@@ -167,16 +181,13 @@ export function renderPlaylistGrid(container, playlists, onOpen) {
       class: 'pl-card reveal',
       role: 'button',
       tabindex: '0',
+      dataset: { idx: String(i) },
       'aria-label': `打开歌单 ${pl.name}`,
-      onclick: () => onOpen(pl),
-      onkeydown: (e) => {
-        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(pl); }
-      },
     });
-    card.style.transitionDelay = Math.min(i, 8) * 40 + 'ms';
+    // 错峰入场控制在 108ms 内：原来最多 320ms，点进页面会有明显的「还在一个个冒出来」
+    card.style.transitionDelay = Math.min(i, 6) * 18 + 'ms';
     card.appendChild(cover(pl.id || pl.name, pl.picUrl));
-    const playBtn = el('button', { class: 'pl-card__play', title: '打开歌单', 'aria-label': '打开歌单' }, [icon('play')]);
-    playBtn.addEventListener('click', (e) => { e.stopPropagation(); onOpen(pl); });
+    const playBtn = el('button', { class: 'pl-card__play', 'data-act': 'open', title: '打开歌单', 'aria-label': '打开歌单' }, [icon('play')]);
     card.querySelector('.pl-card__cover').appendChild(playBtn);
     card.appendChild(el('div', { class: 'pl-card__name', text: pl.name }));
     card.appendChild(el('div', {
@@ -185,6 +196,32 @@ export function renderPlaylistGrid(container, playlists, onOpen) {
     }));
     container.appendChild(card);
   });
+  bindGridDelegation(container, playlists, onOpen);
+}
+
+/* 歌单网格也用委托：卡片数量动辄几十上百，逐张绑 click/keydown 纯属浪费 */
+function bindGridDelegation(container, playlists, onOpen) {
+  let st = container.__gridDelegate;
+  if (st) { st.playlists = playlists; st.onOpen = onOpen; return st; }
+  st = { playlists, onOpen };
+  container.__gridDelegate = st;
+
+  const open = (e) => {
+    const card = e.target.closest ? e.target.closest('.pl-card') : null;
+    if (!card || !container.contains(card)) return false;
+    const pl = st.playlists[Number(card.dataset.idx)];
+    if (!pl) return false;
+    if (e.target.closest('[data-act]')) e.stopPropagation();
+    st.onOpen(pl);
+    return true;
+  };
+
+  container.addEventListener('click', (e) => { open(e); });
+  container.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    if (open(e)) e.preventDefault();
+  });
+  return st;
 }
 
 /* ---------------- 右键菜单 ---------------- */
@@ -354,21 +391,8 @@ export function renderTrackList(container, tracks, {
       class: 'track' + (active ? ' is-active' : '') + (showAlbum ? '' : ' track--noalbum'),
       role: 'button',
       tabindex: '0',
-      dataset: { trackId: String(t.id), trackSource: t.source || 'online' },
+      dataset: { idx: String(i), trackId: String(t.id), trackSource: t.source || 'online' },
       'aria-label': `${t.name}${t.artist ? ' - ' + t.artist : ''}`,
-      onclick: () => onPlay?.(t, i),
-      ondblclick: (e) => {
-        // 双击 = 用当前列表整体替换播放队列（列表设置可关）
-        if (store.get('dblClickSwitch')) { e.preventDefault(); onPlay?.(t, i); }
-      },
-      onkeydown: (e) => {
-        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); onPlay?.(t, i); }
-      },
-      oncontextmenu: (e) => {
-        if (!onMenu) return;
-        e.preventDefault();
-        onMenu(t, i, { x: e.clientX, y: e.clientY });
-      },
     });
 
     const idx = el('div', { class: 'track__idx' }, [
@@ -394,39 +418,92 @@ export function renderTrackList(container, tracks, {
 
     const actions = el('div', { class: 'track__actions' });
     if (onDownload) {
-      const b = el('button', { class: 'iconbtn', title: '下载这首歌', 'aria-label': '下载这首歌' }, [icon('download')]);
-      b.addEventListener('click', (e) => { e.stopPropagation(); onDownload(t, i); });
-      actions.appendChild(b);
+      actions.appendChild(el('button', { class: 'iconbtn', 'data-act': 'down', title: '下载这首歌', 'aria-label': '下载这首歌' }, [icon('download')]));
     }
     if (onAddQueue) {
-      const b = el('button', { class: 'iconbtn', title: '加入播放队列', 'aria-label': '加入播放队列' }, [icon('plus')]);
-      b.addEventListener('click', (e) => { e.stopPropagation(); onAddQueue(t, i); });
-      actions.appendChild(b);
+      actions.appendChild(el('button', { class: 'iconbtn', 'data-act': 'queue', title: '加入播放队列', 'aria-label': '加入播放队列' }, [icon('plus')]));
     }
     if (onFav !== false) {
-      const on = store.isFav(trackKey(t));
-      const b = el('button', { class: 'iconbtn', title: '收藏', 'aria-label': '收藏' });
+      const b = el('button', { class: 'iconbtn', 'data-act': 'fav', title: '收藏', 'aria-label': '收藏' });
       b.dataset.favFor = trackKey(t);
-      syncFavButton(b, on);
-      b.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const now = onFav ? onFav(t) : store.toggleFav(t);
-        syncFavButton(b, now);
-        window.dispatchEvent(new CustomEvent('guman:favchange'));
-        toast(now ? '已收藏' : '已取消收藏');
-      });
+      syncFavButton(b, store.isFav(trackKey(t)));
       actions.appendChild(b);
     }
     if (onRemove) {
-      const b = el('button', { class: 'iconbtn', title: removeTitle, 'aria-label': removeTitle }, [icon('trash')]);
-      b.addEventListener('click', (e) => { e.stopPropagation(); onRemove(t, i); });
-      actions.appendChild(b);
+      actions.appendChild(el('button', { class: 'iconbtn', 'data-act': 'remove', title: removeTitle, 'aria-label': removeTitle }, [icon('trash')]));
     }
     row.appendChild(actions);
 
     row.appendChild(el('div', { class: 'track__dur', text: fmtMs(t.duration) }));
     container.appendChild(row);
   });
+  bindTrackDelegation(container, tracks, { onPlay, onAddQueue, onFav, onRemove, onMenu, onDownload });
+}
+
+/* 曲目列表事件委托
+ * 早先每行要绑 click/dblclick/keydown/contextmenu + 若干按钮监听器：
+ * 一屏 30 行 ≈ 150 个监听器，几百行的歌单会上千个，分类点击与内存都不划算。
+ * 现在容器上只绑一次，行内用 data-idx 回查曲目。 */
+function bindTrackDelegation(container, tracks, opts) {
+  let st = container.__trackDelegate;
+  if (st) { st.tracks = tracks; st.opts = opts; return st; }
+  st = { tracks, opts };
+  container.__trackDelegate = st;
+
+  const hitOf = (e) => {
+    const row = e.target.closest ? e.target.closest('.track') : null;
+    if (!row || !container.contains(row)) return null;
+    const t = st.tracks[Number(row.dataset.idx)];
+    return t ? { row, t, i: Number(row.dataset.idx) } : null;
+  };
+
+  container.addEventListener('click', (e) => {
+    const hit = hitOf(e);
+    if (!hit) return;
+    const o = st.opts || {};
+    const btn = e.target.closest('[data-act]');
+    if (btn && container.contains(btn)) {
+      e.stopPropagation();
+      const act = btn.dataset.act;
+      if (act === 'down') { o.onDownload?.(hit.t, hit.i); return; }
+      if (act === 'queue') { o.onAddQueue?.(hit.t, hit.i); return; }
+      if (act === 'remove') { o.onRemove?.(hit.t, hit.i); return; }
+      if (act === 'fav') {
+        const now = o.onFav ? o.onFav(hit.t) : store.toggleFav(hit.t);
+        syncFavButton(btn, now);
+        window.dispatchEvent(new CustomEvent('guman:favchange'));
+        toast(now ? '已收藏' : '已取消收藏');
+      }
+      return;
+    }
+    o.onPlay?.(hit.t, hit.i);
+  });
+
+  container.addEventListener('dblclick', (e) => {
+    const hit = hitOf(e);
+    if (!hit) return;
+    if (e.target.closest && e.target.closest('[data-act]')) return;
+    // 双击 = 用当前列表整体替换播放队列（列表设置可关）
+    if (store.get('dblClickSwitch')) { e.preventDefault(); st.opts?.onPlay?.(hit.t, hit.i); }
+  });
+
+  container.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const hit = hitOf(e);
+    if (!hit) return;
+    e.preventDefault();
+    e.stopPropagation();
+    st.opts?.onPlay?.(hit.t, hit.i);
+  });
+
+  container.addEventListener('contextmenu', (e) => {
+    const hit = hitOf(e);
+    if (!hit) return;
+    if (!st.opts?.onMenu) return;
+    e.preventDefault();
+    st.opts.onMenu(hit.t, hit.i, { x: e.clientX, y: e.clientY });
+  });
+  return st;
 }
 
 /* ---------------- 分页 ---------------- */

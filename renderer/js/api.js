@@ -2,6 +2,42 @@
 const BASE = '/api';
 const TIMEOUT = 15000;
 
+/* ---------------- 读缓存 ----------------
+ * 页面来回切换（发现 ↔ 音乐馆 ↔ 歌单）时同一份数据会被反复请求，
+ * 每次都要走一趟网易云，点击就变成「等一两秒」。这里做两层：
+ *   1. TTL 内直接命中内存，点击瞬间出内容；
+ *   2. 同一 key 并发请求只发一次（in-flight 合并），避免连点重复打接口。
+ * 写操作（收藏/订阅/登录/音源变更）会清空相关缓存，见 invalidate()。
+ */
+const CACHE_TTL = 60 * 1000;
+const CACHE_MAX = 40; // 歌单曲目列表较大，限制条目数避免吃内存
+const cache = new Map();
+const inflight = new Map();
+
+function invalidate(prefix = '') {
+  if (!prefix) { cache.clear(); return; }
+  for (const k of cache.keys()) if (k.startsWith(prefix)) cache.delete(k);
+}
+
+function memo(key, fn, ttl = CACHE_TTL) {
+  const hit = cache.get(key);
+  const now = Date.now();
+  if (hit && now - hit.at < ttl) {
+    return Promise.resolve(hit.data);
+  }
+  if (inflight.has(key)) return inflight.get(key);
+  const p = fn()
+    .then((data) => {
+      inflight.delete(key);
+      cache.set(key, { at: Date.now(), data });
+      if (cache.size > CACHE_MAX) cache.delete(cache.keys().next().value); // 超限淘汰最早写入
+      return data;
+    })
+    .catch((e) => { inflight.delete(key); throw e; });
+  inflight.set(key, p);
+  return p;
+}
+
 function signal() {
   try { return AbortSignal.timeout(TIMEOUT); } catch (_) { return undefined; }
 }
@@ -38,6 +74,8 @@ async function post(path, body, timeout = TIMEOUT) {
 
 export const api = {
   lastMode: 'offline',
+  /** 清空读缓存：登录态切换、订阅/收藏变化、音源变更后调用 */
+  invalidate,
   _hasSources: null,
   _hasSourcesAt: 0,
   invalidateSources() { this._hasSources = null; this._hasSourcesAt = 0; },
@@ -61,35 +99,40 @@ export const api = {
       return j;
     } catch { return { online: false }; }
   },
-  personalized: () => request('/personalized'),
+  personalized: () => memo('personalized', () => request('/personalized')),
   // 音乐馆：offset 用于服务端分页（total 在返回里，前端算页数）
-  topPlaylists: (cat = '全部', limit = 30, offset = 0) => request('/top/playlist', { cat, limit, offset }),
-  playlistDetail: (id) => request('/playlist/detail', { id }),
-  playlistTracks: (id) => request('/playlist/track/all', { id }),
+  topPlaylists: (cat = '全部', limit = 30, offset = 0) =>
+    memo(`top:${cat}:${limit}:${offset}`, () => request('/top/playlist', { cat, limit, offset })),
+  playlistDetail: (id) => memo('pldetail:' + id, () => request('/playlist/detail', { id })),
+  playlistTracks: (id) => memo('pltracks:' + id, () => request('/playlist/track/all', { id }), 5 * 60 * 1000),
   // 搜索：offset 用于服务端分页（歌曲/歌单总数在 result.songCount / playlistCount）
-  search: (keywords, type = 1, limit = 30, offset = 0) => request('/search', { keywords, type, limit, offset }),
+  search: (keywords, type = 1, limit = 30, offset = 0) =>
+    memo(`search:${keywords}:${type}:${limit}:${offset}`, () => request('/search', { keywords, type, limit, offset })),
   // 多平台搜索：直接按平台检索（wy 走上面，tx/kg 走这里）
   platformList: () => dataOf(request('/platform/list')),
   platformSearch: (platform, keywords, page = 1, limit = 30) =>
-    dataOf(request('/platform/search', { platform, keywords, page, limit })),
+    dataOf(memo(`psearch:${platform}:${keywords}:${page}:${limit}`,
+      () => request('/platform/search', { platform, keywords, page, limit }))),
   // 平台原生取链（酷狗匿名直链 / QQ 登录态或跨平台兜底）
   platformUrl: (payload) => post('/platform/url', payload, 30000),
   platformHealth: () => dataOf(request('/platform/health')),
   songUrl: (id) => request('/song/url', { id }),
-  lyric: (id) => request('/lyric', { id }),
+  lyric: (id) => memo('lyric:' + id, () => request('/lyric', { id }), 10 * 60 * 1000),
   // 歌词译文兜底：key 只存后端，渲染层拿不到
   translateState: () => dataOf(request('/translate/state')),
   translateSave: (payload) => post('/translate/config', payload),
   // 歌词译文兜底：网易云没给 tlyric 时才按需调用（服务端按 歌曲+原文+目标语言 缓存）
   translate: (id, lines, to = 'zh') => post('/translate', { id, lines, to }, 30000),
-  songDetail: (id) => request('/song/detail', { id }),
-  album: (id) => request('/album', { id }),
-  artistTop: (id) => request('/artists', { id }),
-  recommendSongs: () => request('/recommend/songs'),
-  recommendResource: () => request('/recommend/resource'),
-  personalizedNewsong: () => request('/personalized/newsong'),
+  songDetail: (ids) => request('/song/detail', { ids: Array.isArray(ids) ? ids.join(',') : ids }),
+  album: (id) => memo('album:' + id, () => request('/album', { id })),
+  artistTop: (id) => memo('artist:' + id, () => request('/artists', { id })),
+  recommendSongs: () => memo('rec:songs', () => request('/recommend/songs')),
+  recommendResource: () => memo('rec:resource', () => request('/recommend/resource')),
+  personalizedNewsong: () => memo('rec:newsong', () => request('/personalized/newsong')),
   // 歌单订阅（收藏）：t=1 收藏，t=0 取消；需登录 cookie（由后端注入）
-  subscribePlaylist: (id, t = 1) => request('/playlist/subscribe', { id, t }),
+  // 订阅状态写在歌单详情里，成功后要让它和个性化推荐的缓存失效
+  subscribePlaylist: (id, t = 1) => request('/playlist/subscribe', { id, t })
+    .then((r) => { invalidate('pldetail:' + id); invalidate('personalized'); return r; }),
   // 账号下的歌单：subscribed=false 是我创建的，true 是我收藏的别人的。
   // 早先用 /playlist/subs，该路由在当前 NeteaseCloudMusicApi 版本上是 404，云端区块一直静默空掉。
   userPlaylists: (uid, limit = 100) => request('/user/playlist', { uid, limit, offset: 0 }),
@@ -107,7 +150,6 @@ export const api = {
   logout: () => post('/account/logout', {}),
   // 云端歌单：uid 来自登录态；/likelist 只返回 id 列表
   likeList: (uid) => request('/likelist', { uid }),
-  songDetail: (ids) => request('/song/detail', { ids: Array.isArray(ids) ? ids.join(',') : ids }),
 
   // 本地曲库（跨会话：后端按绝对路径登记，播放走 /api/local?id=）
   library: () => dataOf(request('/library')),

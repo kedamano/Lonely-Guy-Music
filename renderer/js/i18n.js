@@ -883,20 +883,34 @@ function translateAttr(elm, attr, dict) {
   if (out !== cur) elm.setAttribute(attr, out);
 }
 
-export function applyLang(next) {
+/**
+ * 应用界面语言。
+ * @param {string} next 目标语言
+ * @param {ParentNode} [scope] 只翻译这个子树（渲染层新建的节点）。切换语言时必须省略以做全量重扫。
+ *
+ * 性能：简体中文就是原文语言，没有语言切换时不存在需要翻译的节点 —— 直接返回，
+ * 避免每次路由切换都把整棵 DOM 走一遍 TreeWalker + 全元素 × 4 属性扫描（这是点击卡顿的主因之一）。
+ */
+export function applyLang(next, scope = null) {
+  const prev = lang;
   lang = next || 'zh-CN';
   document.documentElement.setAttribute('lang', lang === 'en' ? 'en' : lang === 'zh-TW' ? 'zh-Hant' : 'zh-CN');
-  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  const switching = lang !== prev;
+  if (!switching && lang === 'zh-CN') return;
+  // 切换语言：旧节点里的译文要靠 originals/attrState 还原，必须全文档重扫
+  const root = switching ? document.body : (scope || document.body);
+  if (!root) return;
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   const nodes = [];
   while (walker.nextNode()) nodes.push(walker.currentNode);
   nodes.forEach(translateTextNode);
   // 属性
   const dict = DICTS[lang] || {};
-  document.querySelectorAll('*').forEach((elm) => {
+  root.querySelectorAll('*').forEach((elm) => {
     ATTRS.forEach((attr) => translateAttr(elm, attr, dict));
   });
   // 模板节点
-  document.querySelectorAll('[data-i18n-tpl]').forEach(renderTpl);
+  root.querySelectorAll('[data-i18n-tpl]').forEach(renderTpl);
   // 标题
   document.title = tr(document.title);
 }

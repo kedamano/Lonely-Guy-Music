@@ -353,16 +353,18 @@ body::after {
 }
 .pl-card__meta { color: var(--faint); font-size: 11px; margin-top: 5px; font-family: var(--font-mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cover-noise {
-  position: absolute; inset: 0; pointer-events: none; opacity: .1; mix-blend-mode: overlay;
+  position: absolute; inset: 0; pointer-events: none; opacity: .1; mix-blend-mode: overlay; z-index: 2;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 .cover-fallback { position: absolute; inset: 0; display: grid; place-items: center; color: rgba(255,255,255,.72); pointer-events: none; }
 .cover-fallback > svg { width: 30%; height: 30%; max-width: 64px; max-height: 64px; opacity: .38; }
-/* 封面加载探测器：不可见，仅用于感知 background-image 无法捕获的加载失败 */
-.cover-probe {
+/* 封面图：加载完成后淡入。早先用不可见探针 + background-image 两步走，同一张图会解码两次 */
+.cover-img {
   position: absolute; inset: 0; width: 100%; height: 100%;
-  object-fit: cover; opacity: 0; pointer-events: none; z-index: 0;
+  object-fit: cover; opacity: 0; pointer-events: none; z-index: 1;
+  transition: opacity .26s var(--ease, ease);
 }
+.cover-img.is-ready { opacity: 1; }
 
 /* ---------- 分类 chips ---------- */
 .cat-row { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 20px; }
@@ -1056,13 +1058,11 @@ body:has(.np.open) .playerbar { opacity: 0; transform: translateY(100%); pointer
 /* ---------- 入场编排 ---------- */
 .reveal { opacity: 0; transform: translateY(14px); }
 .reveal.in { opacity: 1; transform: none; transition: opacity var(--dur-slow) var(--ease), transform var(--dur-slow) var(--ease); }
-.reveal:nth-child(2) { transition-delay: 50ms; }
-.reveal:nth-child(3) { transition-delay: 100ms; }
-.reveal:nth-child(4) { transition-delay: 150ms; }
-.reveal:nth-child(5) { transition-delay: 200ms; }
-.reveal:nth-child(6) { transition-delay: 250ms; }
-.reveal:nth-child(7) { transition-delay: 300ms; }
-.reveal:nth-child(8) { transition-delay: 350ms; }
+/* 入场错峰只保留 4 级、最多 120ms：原来排到 350ms，切页时会有「内容还在一个个冒出来」的迟滞感 */
+.reveal:nth-child(2) { transition-delay: 30ms; }
+.reveal:nth-child(3) { transition-delay: 60ms; }
+.reveal:nth-child(4) { transition-delay: 90ms; }
+.reveal:nth-child(5) { transition-delay: 120ms; }
 
 /* ---------- 迷你模式 ---------- */
 body.mini .titlebar,

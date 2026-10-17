@@ -24,7 +24,8 @@ let hostServer = null;       // 同进程后端（server/index.js），getPort()
 
 // 传给每个窗口 preload 的元数据（preload 环境没有 app 模块，
 // 读 app.isPackaged/app.getVersion 会让 preload 整体崩掉、window.gm 消失）
-const gumanMetaArgs = () => [`--guman-meta=v${app.getVersion()}|${app.isPackaged ? '0' : '1'}`];
+// 版本号只传裸版本（1.2.1），前缀 v 由渲染层统一加 —— 两边都加会出现「v v1.2.1」。
+const gumanMetaArgs = () => [`--guman-meta=${app.getVersion()}|${app.isPackaged ? '0' : '1'}`];
 
 // 窗口尺寸预设（与设置页 → 基本设置 → 窗口尺寸 对应）
 const WINDOW_SIZES = {
