@@ -282,7 +282,8 @@ node scripts/proxy-check.js      # 12 项代理机制单测
 - [ ] 歌单云同步 / 账号登录完善
 - [ ] macOS / Linux 安装包
 - [ ] 音效链扩展（空间音频 / 音频场景预设）
-- [ ] 自动更新完整闭环（`electron-updater` 已接入）
+
+已支持 ✅：应用内自动更新（`electron-updater` + GitHub Releases 源，发布新版本后启动即提示）
 
 ---
 

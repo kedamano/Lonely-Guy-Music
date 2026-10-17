@@ -18,6 +18,7 @@ userData/
 
 # 构建产物与发布前清理目录
 dist/
+dist-new/
 .tmp_ui/
 .tmp_ui2/
 _lx_extract/

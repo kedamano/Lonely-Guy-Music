@@ -263,7 +263,8 @@ Covers: live search / tab switching / playback / seek dragging / favorites / que
 - [ ] Cloud playlist sync / full account login
 - [ ] macOS / Linux installers
 - [ ] Audio chain extensions (spatial audio / scene presets)
-- [ ] Full auto-update loop (`electron-updater` already wired)
+
+Already available ✅: in-app auto-update (`electron-updater` + GitHub Releases feed — new versions prompt on launch)
 
 ---
 
