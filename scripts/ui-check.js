@@ -147,7 +147,7 @@ const shot = async (page, name) => {
   await page.waitForTimeout(500);
   check('我的页渲染', (await page.locator('.h-title').textContent()) === '我的');
   const mineTabs = await page.locator('.tab').count();
-  check('我的页三个标签', mineTabs === 3, `${mineTabs} 个`);
+  check('我的页五个标签', mineTabs === 5, `${mineTabs} 个`);
   await page.locator('.tab').nth(1).click();
   await page.waitForTimeout(400);
   check('历史标签有播放记录', (await page.locator('.track').count()) > 0, `${await page.locator('.track').count()} 首`);
@@ -156,7 +156,8 @@ const shot = async (page, name) => {
   // ---------- 设置 ----------
   await page.click('.nav__item[data-route="settings"]');
   await page.waitForTimeout(900);
-  check('设置页渲染', (await page.locator('.settings__select').count()) === 1);
+  const sels = await page.locator('.settings__select').count();
+  check('设置页渲染', sels >= 3, `${sels} 个下拉`);
   check('设置页快捷键说明', (await page.locator('.settings__section').count()) >= 3, `${await page.locator('.settings__section').count()} 个区块`);
   await shot(page, '09-settings');
 
@@ -169,6 +170,49 @@ const shot = async (page, name) => {
   check('本地音频导入', localRows > 0, `${localRows} 首`);
   check('本地音频可播放', (await page.locator('#pbTitle').textContent()).includes('guman-test-tone'), await page.locator('#pbTitle').textContent());
   await shot(page, '12-local');
+
+  // ---------- 账号入口 / 每日推荐 / 右键加入歌单 ----------
+  await page.click('.nav__item[data-route="discover"]');
+  await page.waitForTimeout(1400);
+  check('侧边栏账号入口可见', await page.locator('#accountBtn').isVisible());
+  check('未登录文案', (await page.locator('#accountName').textContent()) === '未登录',
+    await page.locator('#accountSub').textContent());
+  const dailyTitle = (await page.locator('.section__title').first().textContent() || '').trim();
+  check('发现页每日推荐区块', dailyTitle.includes('推荐'), dailyTitle.slice(0, 24));
+  const dailyRows = await page.locator('.section .track').count();
+  check('推荐曲目行渲染', dailyRows > 0, `${dailyRows} 首`);
+
+  await page.locator('.section .track').first().click({ button: 'right' });
+  await page.waitForTimeout(350);
+  const menuItems = await page.locator('.menu__item').count();
+  check('曲目右键菜单', menuItems >= 4, `${menuItems} 项`);
+  await page.locator('.menu__item', { hasText: '加入歌单…' }).click();
+  await page.waitForTimeout(450);
+  check('新建歌单弹窗', (await page.locator('.modal.open .modal__title').textContent()) === '新建歌单');
+  await page.fill('.modal input', '测试歌单');
+  await page.locator('.modal__foot .btn--primary').click();
+  await page.waitForTimeout(700);
+  check('建单后弹窗关闭', (await page.locator('.modal.open').count()) === 0);
+
+  await page.click('.nav__item[data-route="mine"]');
+  await page.waitForTimeout(500);
+  await page.locator('.tab').nth(3).click();
+  await page.waitForTimeout(600);
+  check('我的歌单卡片', (await page.locator('.pl-card__name').first().textContent()) === '测试歌单');
+  await page.locator('.pl-card').first().click();
+  await page.waitForTimeout(800);
+  check('本地歌单详情页', (await page.locator('.pl-hero__name').textContent()) === '测试歌单');
+  const sheetRows = await page.locator('.track').count();
+  check('本地歌单曲目', sheetRows >= 1, `${sheetRows} 首`);
+  await shot(page, '13-sheet');
+
+  await page.locator('.pl-hero__cta .btn-ghost').nth(3).click(); // 删除
+  await page.waitForTimeout(450);
+  check('删除确认弹窗', (await page.locator('.modal.open .modal__title').textContent()) === '删除歌单');
+  await page.locator('.modal__foot .btn--danger').click();
+  await page.waitForTimeout(700);
+  check('删除后回到我的', (await page.locator('.h-title').textContent()) === '我的');
+  await shot(page, '14-sheet-deleted');
 
   // ---------- 迷你模式 ----------
   await page.keyboard.press('m');

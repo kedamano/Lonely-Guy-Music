@@ -11,9 +11,16 @@ async function request(path, params) {
   const res = await fetch(BASE + path + qs, { signal: signal() });
   const mode = res.headers.get('X-Api-Mode');
   if (mode) api.lastMode = mode;
-  if (!res.ok) throw new Error('HTTP ' + res.status);
+  if (!res.ok) {
+    // 专用路由（账号/曲库）出错时回 { code, msg }，网易云透传则未必是 JSON
+    const j = await res.json().catch(() => null);
+    throw new Error((j && j.msg) || 'HTTP ' + res.status);
+  }
   return res.json();
 }
+
+// 专用路由统一返回 { code, data }，透传路由直接返回网易云响应体
+const dataOf = (p) => p.then((r) => (r && Object.prototype.hasOwnProperty.call(r, 'data') ? r.data : r));
 
 async function post(path, body, timeout = TIMEOUT) {
   let sig;
@@ -74,14 +81,14 @@ export const api = {
   subscribedPlaylists: (limit = 50, offset = 0) => request('/playlist/subs', { limit, offset }),
 
   // 账号：凭证保存在后端 userData，渲染层只拿到昵称/头像，拿不到 cookie
-  accountState: () => request('/account/state'),
-  qrStart: () => request('/account/qr/start'),
-  qrCheck: (key) => request('/account/qr/check', { key }),
+  accountState: () => dataOf(request('/account/state')),
+  qrStart: () => dataOf(request('/account/qr/start')),
+  qrCheck: (key) => dataOf(request('/account/qr/check', { key })),
   accountRefresh: () => post('/account/refresh', {}),
   logout: () => post('/account/logout', {}),
 
   // 本地曲库（跨会话：后端按绝对路径登记，播放走 /api/local?id=）
-  library: () => request('/library'),
+  library: () => dataOf(request('/library')),
   libAdd: (paths) => post('/library/add', { paths }),
   libScan: (dir) => post('/library/scan', { dir }, 30000),
   libRemove: (id) => post('/library/remove', { id }),

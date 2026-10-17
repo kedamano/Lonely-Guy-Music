@@ -222,6 +222,102 @@ export function openMenu(x, y, items = []) {
   return m;
 }
 
+/* ---------------- 弹窗 ---------------- */
+// 替代 window.prompt/confirm：桌面端原生弹窗与应用风格割裂，且无法承载二维码等内容。
+// 打开新弹窗会先关闭旧的（同一时刻只保留一个）。
+let modalEl = null;
+let modalCleanup = null;
+export function closeModal() {
+  if (!modalEl) return;
+  const el2 = modalEl;
+  modalEl = null;
+  const done = modalCleanup; modalCleanup = null;
+  el2.remove();
+  done?.();
+}
+export function isModalOpen() { return !!modalEl; }
+
+export function openModal({ title = '', desc = '', body = null, actions = [], onClose = null, dismissible = true } = {}) {
+  closeModal();
+  let settled = false;
+  const finish = () => { if (settled) return; settled = true; onClose?.(); };
+  const card = el('div', { class: 'modal__card', role: 'dialog', 'aria-modal': 'true', 'aria-label': title || '对话框' }, [
+    title ? el('div', { class: 'modal__head' }, [
+      el('div', { class: 'modal__title', text: title }),
+      dismissible ? el('button', { class: 'iconbtn', title: '关闭', 'aria-label': '关闭', onclick: closeModal }, [icon('close')]) : null,
+    ]) : null,
+    desc ? el('p', { class: 'modal__desc', text: desc }) : null,
+    body,
+    actions.length ? el('div', { class: 'modal__foot' }, actions) : null,
+  ]);
+  const root = el('div', { class: 'modal open' }, [
+    el('div', { class: 'modal__backdrop', onclick: () => (dismissible ? closeModal() : null) }),
+    card,
+  ]);
+  const onKey = (e) => {
+    if (e.key !== 'Escape' || !dismissible) return;
+    e.stopPropagation();
+    closeModal();
+  };
+  document.addEventListener('keydown', onKey, true);
+  modalCleanup = () => { document.removeEventListener('keydown', onKey, true); finish(); };
+  document.body.appendChild(root);
+  modalEl = root;
+  return card;
+}
+
+/** 输入框弹窗 → Promise<string|null>（null 表示取消） */
+export function promptText({
+  title = '输入', label = '', desc = '', value = '', placeholder = '',
+  okText = '确定', multiline = false,
+} = {}) {
+  return new Promise((resolve) => {
+    const input = el(multiline ? 'textarea' : 'input', {
+      type: multiline ? null : 'text',
+      placeholder,
+      rows: multiline ? '3' : null,
+    });
+    input.value = value;
+    const body = el('div', { class: 'field' }, [
+      label ? el('div', { class: 'field__label', text: label }) : null,
+      input,
+    ]);
+    let result = null;
+    openModal({
+      title, desc, body,
+      actions: [
+        el('button', { class: 'btn', text: '取消', onclick: () => closeModal() }),
+        el('button', { class: 'btn btn--primary', text: okText, onclick: () => { result = input.value; closeModal(); } }),
+      ],
+      onClose: () => resolve(result),
+    });
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !multiline) { e.preventDefault(); result = input.value; closeModal(); }
+      e.stopPropagation(); // 输入时不要触发全局快捷键
+    });
+    requestAnimationFrame(() => { input.focus(); input.select?.(); });
+  });
+}
+
+/** 确认弹窗 → Promise<boolean> */
+export function confirmModal({ title = '确认操作', desc = '', okText = '确定', cancelText = '取消', danger = false } = {}) {
+  return new Promise((resolve) => {
+    let result = false;
+    openModal({
+      title, desc,
+      actions: [
+        el('button', { class: 'btn', text: cancelText, onclick: () => closeModal() }),
+        el('button', {
+          class: 'btn ' + (danger ? 'btn--danger' : 'btn--primary'),
+          text: okText,
+          onclick: () => { result = true; closeModal(); },
+        }),
+      ],
+      onClose: () => resolve(result),
+    });
+  });
+}
+
 /* ---------------- 曲目列表 ---------------- */
 function syncFavButton(btn, on) {
   btn.classList.toggle('is-on', on);
@@ -264,6 +360,11 @@ export function renderTrackList(container, tracks, {
       },
       onkeydown: (e) => {
         if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); onPlay?.(t, i); }
+      },
+      oncontextmenu: (e) => {
+        if (!onMenu) return;
+        e.preventDefault();
+        onMenu(t, i, { x: e.clientX, y: e.clientY });
       },
     });
 

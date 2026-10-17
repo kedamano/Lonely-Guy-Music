@@ -55,7 +55,8 @@ async function ncm(pathname, params = {}) {
   });
   const j = await r.json().catch(() => null);
   if (!j) throw new Error(`网易云接口无响应（${pathname}）`);
-  if (j.code && j.code >= 500) throw new Error(`网易云接口错误 ${j.code}`);
+  // 只把 4xx/5xx 当接口错误：登录轮询用 8xx（800 过期 / 801 待扫码 / 802 待确认 / 803 成功）表达正常状态
+  if (j.code && j.code >= 400 && j.code < 600) throw new Error(`网易云接口错误 ${j.code}`);
   return j;
 }
 
@@ -110,7 +111,7 @@ async function qrCreate(key) {
 }
 
 /**
- * 轮询扫码结果。上游 code：801 已扫码待确认 / 802 等待扫码 / 803 成功 / 800 已过期
+ * 轮询扫码结果。上游 code：800 二维码已过期 / 801 等待扫码 / 802 已扫码待确认 / 803 成功
  * 成功时把上游返回的 cookie 存下来（只在本机），响应里仅回 code 与用户信息。
  */
 async function qrCheck(key) {

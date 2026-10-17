@@ -1,4 +1,4 @@
-// 状态与持久化：设置 / 收藏 / 历史 / 搜索历史落盘；本地曲库与播放队列为会话级
+// 落盘状态：设置 / 收藏 / 历史 / 搜索历史 / 本地命名歌单 / 收藏的在线歌单
 const LS_KEY = 'guman.state.v2';
 
 const DEFAULTS = {
@@ -246,15 +246,8 @@ export const store = {
   },
   getLastTrack() { return data.lastTrack; },
 
-  /* ---------- 本地曲库（会话级） ---------- */
-  addLocal(track) {
-    session.library = session.library.filter((t) => t.url !== track.url);
-    session.library.unshift(track);
-  },
-  removeLocal(url) { session.library = session.library.filter((t) => t.url !== url); },
-  getLibrary() { return session.library; },
-
   /* ---------- 播放队列（会话级） ---------- */
+  // 本地曲库不在这里：已改由后端按绝对路径登记（见 renderer/js/library.js），跨会话保留
   setQueue(list, index) { session.queue = list || []; session.queueIndex = index ?? -1; },
   getQueue() { return session.queue; },
   getQueueIndex() { return session.queueIndex; },

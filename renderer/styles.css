@@ -295,6 +295,8 @@ body::after {
 .section__title::before { content: ""; width: 3px; height: 16px; border-radius: 3px; background: var(--accent); }
 .section__sub { color: var(--faint); font-size: 12px; font-weight: 400; margin-left: 2px; }
 .section__more { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); font-size: 12.5px; transition: color var(--dur-fast); }
+.section__actions { display: inline-flex; align-items: center; gap: 12px; }
+.section__actions > svg { width: 13px; height: 13px; }
 .section__more > svg { width: 14px; height: 14px; }
 .section__more:hover { color: var(--accent); }
 
@@ -986,12 +988,21 @@ body.mini .pb__track .iconbtn { display: none; }
 .field input:focus, .field textarea:focus { outline: none; border-color: var(--accent-line); box-shadow: 0 0 0 3px var(--accent-soft); }
 
 .qr { display: grid; gap: 12px; justify-items: center; text-align: center; }
-.qr__img { width: 196px; height: 196px; border-radius: var(--radius-md); background: #fff; padding: 8px; border: 1px solid var(--border-strong); }
-.qr__img img { width: 100%; height: 100%; display: block; image-rendering: auto; }
+.qr__img {
+  width: 196px; height: 196px; border-radius: var(--radius-md); background: #fff; padding: 8px;
+  border: 1px solid var(--border-strong); display: grid; place-items: center; overflow: hidden;
+}
+.qr__img img { width: 100%; height: 100%; display: block; object-fit: contain; image-rendering: auto; }
 .qr__status { font-size: 12.5px; color: var(--muted); display: flex; align-items: center; gap: 7px; }
 .qr__status.is-ok { color: var(--ok); }
 .qr__status.is-wait { color: var(--warn); }
 .qr__hint { font-size: 11.5px; color: var(--faint); line-height: 1.6; }
+
+/* 账号信息等只读键值行 */
+.kv { display: flex; align-items: baseline; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--border); }
+.kv:last-child { border-bottom: none; }
+.kv__k { font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--faint); flex: none; width: 52px; }
+.kv__v { font-size: 13px; color: var(--text); min-width: 0; word-break: break-all; }
 
 /* ---------- 右键菜单 ---------- */
 .menu {

@@ -341,6 +341,17 @@ app.get('/api/proxy', async (req, res) => {
   }
 });
 
+// 统一错误出口：body-parser 解析失败（非法 JSON / 超过 2mb）默认会返回 HTML 500 并打印堆栈，
+// 既泄露本机绝对路径，又让渲染层拿不到可读原因。
+app.use((err, req, res, _next) => {
+  const status = Number(err && (err.status || err.statusCode)) || 500;
+  if (status === 400 || status === 413) {
+    return res.status(status).json({ code: status, msg: status === 413 ? '请求体过大' : '请求体格式错误（不是合法 JSON）' });
+  }
+  console.error('[host] 未处理异常:', err && err.message);
+  if (!res.headersSent) res.status(500).json({ code: 500, msg: '服务器内部错误' });
+});
+
 // ---- 拉起网易云 API（后台子进程，端口 3001）----
 function startNetease() {
   const appJs = path.join(__dirname, '../node_modules/NeteaseCloudMusicApi/app.js');

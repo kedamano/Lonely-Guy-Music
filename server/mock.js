@@ -202,14 +202,15 @@ const routes = {
   '/lyric': async (q) => ({ lrc: { version: 0, lyric: buildLyric(Number(q.id) || 1) }, tlyric: { version: 0, lyric: '' }, code: 200 }),
 
   // 每日推荐（离线用示例曲库凑一份，保证首屏在断网时也不空）
+  // 键名与上游一致：/recommend/songs 与 /recommend/resource 都返回 recommend 数组
   '/recommend/songs': async () => {
     const songs = buildTracks(PLAYLISTS[0].id, 10).concat(buildTracks(PLAYLISTS[2].id, 6));
-    return { code: 200, results: songs, explain: '离线示例：按内置曲库生成' };
+    return { code: 200, recommend: songs, explain: '离线示例：按内置曲库生成' };
   },
 
   '/recommend/resource': async () => ({
     code: 200,
-    recommendation: [PLAYLISTS[12], PLAYLISTS[13], PLAYLISTS[14], PLAYLISTS[15]].map(playlistToList),
+    recommend: [PLAYLISTS[12], PLAYLISTS[13], PLAYLISTS[14], PLAYLISTS[15]].map(playlistToList),
   }),
 
   '/personalized/newsong': async () => {

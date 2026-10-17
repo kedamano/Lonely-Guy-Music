@@ -5,12 +5,15 @@ import { Player } from './player.js';
 import { createVisualizer } from './visualizer.js';
 import { activeLine } from './lyrics.js';
 import {
-  el, icon, hydrateIcons, setIcon, setCover, fmtTime, fmtMs, toast,
+  el, icon, hydrateIcons, setIcon, setCover, cover, fmtTime, fmtMs, toast,
   renderPlaylistGrid, renderTrackList, heading, emptyState, trackKey,
   skeletonCards, skeletonRows, playCountText, proxyUrl, pager,
+  openMenu, openModal, closeModal, promptText, confirmModal,
 } from './ui.js';
 import { SettingsView } from './settings.js';
 import { applyLang, currentLang, tpl } from './i18n.js';
+import { accountState, refreshAccount, paintAccount, openAccountMenu, openLoginModal } from './account.js';
+import { library } from './library.js';
 
 const $ = (id) => document.getElementById(id);
 const view = $('view');
@@ -55,6 +58,13 @@ async function router() {
     setActiveNav('');
     return renderPlaylist(param, token);
   }
+  if (name === 'sheet' && param) {
+    currentRoute = 'sheet';
+    setActiveNav('mine');
+    return renderSheet(param, token);
+  }
+  // #/mine/pins 这类深链：直接把「我的」切到指定分页
+  if (name === 'mine' && param && MINE_TABS.some((t) => t.key === param)) mineTab = param;
   currentRoute = routes[name] ? name : 'discover';
   setActiveNav(currentRoute);
   await (routes[name] || renderDiscover)(token);
@@ -98,6 +108,11 @@ async function renderDiscover(token) {
   ]);
   view.appendChild(hero);
 
+  // 每日推荐：登录时给个性化推荐，未登录降级到推荐新歌，离线也能出内容
+  const daily = el('section', { class: 'section reveal' });
+  view.appendChild(daily);
+  applyDailyRecommend(daily, token);
+
   const sec = el('section', { class: 'section reveal' }, [
     el('div', { class: 'section__head' }, [
       el('div', { class: 'section__title', html: '精选歌单 <span class="section__sub">每日更新</span>' }),
@@ -123,6 +138,7 @@ async function renderDiscover(token) {
       currentId: player.current?.id,
       currentSource: player.current?.source,
       onAddQueue: addQueueWithToast,
+      onMenu: (t, i, pos) => openTrackMenu(t, i, pos, { scope: recent }),
       showSource: !!store.get('showSourceTag'),
       onDownload: store.get('downloadEnabled') ? (t) => downloadTrack(t) : null,
     });
@@ -146,6 +162,108 @@ async function renderDiscover(token) {
     }));
   }
   revealIn();
+}
+
+/* ---------------- 每日推荐（首屏第一入口） ---------------- */
+// 网易云的每日推荐按自然日生成，重复请求既慢又会让内容跳变，因此按天缓存；
+// 登录态变化时缓存自动失效（key 里带 loggedIn），登录后立刻能看到个性化结果。
+const DAILY_KEY = 'guman.daily.v1';
+const todayStr = () => new Date().toLocaleDateString('en-CA'); // 本地时区的 YYYY-MM-DD
+
+function readDailyCache() {
+  try {
+    const c = JSON.parse(localStorage.getItem(DAILY_KEY) || 'null');
+    if (c && c.date === todayStr() && !!c.loggedIn === accountState().loggedIn) return c;
+  } catch (_) { /* 缓存损坏按未命中处理 */ }
+  return null;
+}
+function writeDailyCache(data) {
+  try {
+    localStorage.setItem(DAILY_KEY, JSON.stringify({ ...data, date: todayStr(), loggedIn: accountState().loggedIn }));
+  } catch (_) { /* 超出配额只影响首屏缓存，不影响功能 */ }
+}
+
+async function applyDailyRecommend(sec, token) {
+  const cached = readDailyCache();
+  if (cached) { paintDaily(sec, cached); return; }
+  sec.appendChild(skeletonRows(4));
+
+  const loggedIn = accountState().loggedIn;
+  let data = null;
+  try {
+    if (loggedIn) {
+      const [songsR, resR] = await Promise.all([
+        api.recommendSongs().catch(() => null),
+        api.recommendResource().catch(() => null),
+      ]);
+      const raw = songsR?.recommend || songsR?.results || [];
+      data = {
+        kind: 'personal',
+        songs: raw.slice(0, 10).map(normalizeTrack),
+        reason: String(raw[0]?.reason || ''),
+        playlists: (resR?.recommend || resR?.recommendation || []).map(normalizePlaylist).slice(0, 4),
+      };
+    } else {
+      const r = await api.personalizedNewsong();
+      data = { kind: 'new', songs: (r.result || []).map(normalizeTrack).slice(0, 10), reason: '', playlists: [] };
+    }
+  } catch (e) {
+    if (token === routeToken) sec.remove(); // 拉不到就不在首屏留空壳
+    return;
+  }
+  if (token !== routeToken) return;
+  writeDailyCache(data);
+  paintDaily(sec, data);
+}
+
+function paintDaily(sec, data) {
+  sec.innerHTML = '';
+  const songs = (data.songs || []).filter((t) => t && t.id);
+  const pins = data.playlists || [];
+  if (!songs.length && !pins.length) { sec.remove(); return; }
+
+  const personal = data.kind === 'personal';
+  sec.appendChild(el('div', { class: 'section__head' }, [
+    el('div', { class: 'section__title' }, [
+      personal ? '每日推荐' : '推荐新歌',
+      el('span', { class: 'section__sub', text: personal ? '根据你的收听历史生成' : '网易云近期上新' }),
+      data.reason ? el('span', { class: 'reco__reason', text: data.reason }) : null,
+    ]),
+    el('div', { class: 'section__actions' }, [
+      songs.length ? el('button', { class: 'linkbtn', onclick: () => playCollection(songs, 0) }, [icon('play'), '播放全部']) : null,
+      el('button', {
+        class: 'section__more',
+        onclick: () => { localStorage.removeItem(DAILY_KEY); renderDiscover(++routeToken); },
+        title: '换一批',
+      }, ['换一批', icon('refresh')]),
+    ]),
+  ]));
+
+  if (songs.length) {
+    const list = el('div', { class: 'tracklist' });
+    renderTrackList(list, songs, {
+      onPlay: (t, i) => player.playTrack(t, songs, i),
+      currentId: player.current?.id,
+      currentSource: player.current?.source,
+      onAddQueue: addQueueWithToast,
+      onMenu: (t, i, pos) => openTrackMenu(t, i, pos, { scope: songs }),
+      showSource: !!store.get('showSourceTag'),
+      onDownload: store.get('downloadEnabled') ? (t) => downloadTrack(t) : null,
+    });
+    sec.appendChild(list);
+  }
+  if (pins.length) {
+    const grid = el('div', { class: 'grid', style: 'margin-top:14px' });
+    renderPlaylistGrid(grid, pins, openPlaylist);
+    sec.appendChild(grid);
+  }
+  if (!personal && !accountState().loggedIn) {
+    sec.appendChild(el('button', { class: 'pill pill--cta', onclick: () => openLoginModal() }, [
+      icon('vip'), '登录网易云，解锁属于你的每日推荐',
+    ]));
+  }
+  revealIn();
+  applyLang(currentLang());
 }
 
 /* ---------------- 视图：音乐馆 ---------------- */
@@ -431,6 +549,7 @@ function renderSearchOutput() {
       currentId: player.current?.id,
       currentSource: player.current?.source,
       onAddQueue: addQueueWithToast,
+      onMenu: (t, i, pos) => openTrackMenu(t, i, pos, { scope: search.songs }),
       showSource: !!store.get('showSourceTag'),
       onDownload: store.get('downloadEnabled') ? (t) => downloadTrack(t) : null,
     });
@@ -481,17 +600,24 @@ function escapeHtml(s) {
 
 /* ---------------- 视图：本地音乐 ---------------- */
 let localPage = 1; // 本地曲库客户端分页页码
-function renderLocal() {
+async function renderLocal(token) {
   view.innerHTML = '';
-  const cta = el('div', { class: 'view-head__cta' }, [
-    el('button', { class: 'btn-primary', onclick: () => $('fileInput')?.click() }, [icon('plus'), '选择文件']),
-    el('button', { class: 'btn-ghost', onclick: () => $('dirInput')?.click() }, [icon('folder-plus'), '选择文件夹']),
-  ]);
-  view.appendChild(heading('LOCAL', '本地音乐', '导入本地音频，用同一套播放器与声场播放。', cta));
+  await library.load(); // 服务端清单（Electron）；浏览器环境直接返回会话清单
+  if (token !== routeToken) return;
 
-  const fileInput = el('input', { id: 'fileInput', type: 'file', accept: 'audio/*,.flac,.m4a', multiple: 'true', style: 'display:none', onchange: (e) => handleFiles(e.target.files) });
-  const dirInput = el('input', { id: 'dirInput', type: 'file', accept: 'audio/*,.flac,.m4a', multiple: 'true', webkitdirectory: 'true', style: 'display:none', onchange: (e) => handleFiles(e.target.files) });
-  view.appendChild(fileInput); view.appendChild(dirInput);
+  const persistNote = library.isServer();
+  const cta = el('div', { class: 'view-head__cta' }, [
+    el('button', { class: 'btn-primary', onclick: () => pickLocalFiles() }, [icon('plus'), '选择文件']),
+    el('button', { class: 'btn-ghost', onclick: () => pickLocalDir() }, [icon('folder-plus'), '选择文件夹']),
+  ]);
+  view.appendChild(heading('LOCAL', '本地音乐',
+    persistNote ? '导入的曲目登记在本机清单里，重启后依然在。' : '导入本地音频，用同一套播放器与声场播放。', cta));
+
+  // 浏览器环境没有原生文件对话框，用隐藏 input 兜底（Electron 走主进程对话框）
+  if (!persistNote) {
+    view.appendChild(el('input', { id: 'fileInput', type: 'file', accept: 'audio/*,.flac,.m4a', multiple: 'true', style: 'display:none', onchange: (e) => importFiles(e.target.files) }));
+    view.appendChild(el('input', { id: 'dirInput', type: 'file', accept: 'audio/*,.flac,.m4a', multiple: 'true', webkitdirectory: 'true', style: 'display:none', onchange: (e) => importFiles(e.target.files) }));
+  }
 
   const drop = el('div', { class: 'dropzone reveal' }, [
     icon('upload'),
@@ -505,25 +631,30 @@ function renderLocal() {
   drop.addEventListener('drop', (e) => {
     e.preventDefault();
     drop.classList.remove('is-drag');
-    handleFiles(e.dataTransfer?.files);
+    importFiles(e.dataTransfer?.files);
   });
   view.appendChild(drop);
 
-  const lib = store.getLibrary();
+  const lib = library.all();
+  lib.filter((t) => !t.duration).slice(0, 30).forEach(readMeta); // 补齐缺失时长并回写清单
   if (!lib.length) {
     const empty = emptyState({
       iconName: 'local', title: '还没有本地音乐',
       desc: '把 mp3 / flac 等文件拖进上方区域，或通过按钮导入。导入后即可用均衡器与频谱播放。',
       actions: [
-        el('button', { class: 'btn', onclick: () => $('fileInput')?.click() }, [icon('plus'), '选择文件']),
-        el('button', { class: 'btn', onclick: () => $('dirInput')?.click() }, [icon('folder-plus'), '选择文件夹']),
+        el('button', { class: 'btn', onclick: () => pickLocalFiles() }, [icon('plus'), '选择文件']),
+        el('button', { class: 'btn', onclick: () => pickLocalDir() }, [icon('folder-plus'), '选择文件夹']),
       ],
     });
     empty.classList.add('local-empty', 'reveal');
     view.appendChild(empty);
   } else {
     const bar = el('div', { class: 'lib-toolbar reveal' }, [
-      (() => { const n = el('div', { class: 'lib-toolbar__info' }); tpl(n, '本地曲库 <b>{n}</b> 首 · 仅本次会话有效', { n: lib.length }); return n; })(),
+      (() => {
+        const n = el('div', { class: 'lib-toolbar__info' });
+        tpl(n, persistNote ? '本地曲库 <b>{n}</b> 首 · 已存入本机' : '本地曲库 <b>{n}</b> 首 · 仅本次会话有效', { n: lib.length });
+        return n;
+      })(),
       el('div', { class: 'lib-toolbar__actions' }, [
         el('button', { class: 'btn btn--small', onclick: () => playCollection(lib, 0) }, [icon('play'), '播放全部']),
         el('button', { class: 'btn btn--small', onclick: () => addAllToQueue(lib) }, [icon('plus'), '加入队列']),
@@ -533,13 +664,10 @@ function renderLocal() {
     const { list, pager: pg } = paginatedTrackList(lib, localPage, {
       onPlay: (all, i) => playCollection(all, i),
       onAddQueue: addQueueWithToast,
-      onRemove: (all, i) => {
-        store.removeLocal(all[i].url);
-        toast('已从本地曲库移除');
-        renderLocal();
-      },
+      onRemove: (all, i) => removeLocalTrack(all[i]),
       removeTitle: '移除',
-      onPage: (p) => { localPage = p; renderLocal(); $('view').scrollTop = 0; },
+      onMenu: (t, i, pos) => openTrackMenu(t, i, pos, { scope: lib, onReRender: () => renderLocal(++routeToken) }),
+      onPage: (p) => { localPage = p; renderLocal(++routeToken); $('view').scrollTop = 0; },
     });
     view.appendChild(list);
     if (pg.pageCount > 1) view.appendChild(pg);
@@ -547,57 +675,111 @@ function renderLocal() {
   revealIn();
 }
 
+async function removeLocalTrack(t) {
+  await library.remove(t);
+  toast('已从本地曲库移除');
+  renderLocal(++routeToken);
+}
+
+async function pickLocalFiles() {
+  if (!library.isServer()) { $('fileInput')?.click(); return; }
+  try {
+    const paths = await window.gm.openMusicFiles();
+    if (paths && paths.length) await importPaths(paths);
+  } catch (e) {
+    toast('打开文件对话框失败：' + (e.message || ''), 4000, 'error');
+  }
+}
+
+async function pickLocalDir() {
+  if (!library.isServer()) { $('dirInput')?.click(); return; }
+  let dir = null;
+  try {
+    dir = await window.gm.openMusicDir();
+  } catch (e) {
+    return toast('打开目录对话框失败：' + (e.message || ''), 4000, 'error');
+  }
+  if (!dir) return;
+  toast('正在扫描目录，请稍候…');
+  try {
+    const r = await library.scan(dir);
+    finishImport(r.added, r.skipped);
+  } catch (e) {
+    toast('扫描失败：' + (e.message || '目录不可读'), 5000, 'error');
+  }
+}
+
+async function importFiles(fileList) {
+  try {
+    const r = await library.addFiles(fileList);
+    finishImport(r.added, r.skipped);
+  } catch (e) {
+    toast('导入失败：' + (e.message || '无法读取所选文件'), 5000, 'error');
+  }
+}
+
+async function importPaths(paths) {
+  try {
+    const r = await library.addPaths(paths);
+    finishImport(r.added, r.skipped);
+  } catch (e) {
+    toast('导入失败：' + (e.message || ''), 5000, 'error');
+  }
+}
+
+function finishImport(added, skipped = 0) {
+  renderLocal(++routeToken);
+  if (!added?.length) {
+    toast(skipped ? '没有可导入的音频文件' : '这些曲目已经在曲库里了');
+    return;
+  }
+  playCollection(library.all(), 0); // 导入即出声，验证链路可用
+  toast(`已导入 ${added.length} 首本地音乐` + (skipped ? `，跳过 ${skipped} 个不支持的文件` : ''));
+}
+
+// 本地文件缺少时长：读一次 metadata 回写清单，避免每次进入页面重复探测
 function readMeta(track) {
+  if (!track || track.duration > 0) return;
   const a = new Audio();
   a.preload = 'metadata';
   a.src = track.url;
   a.addEventListener('loadedmetadata', () => {
-    track.duration = (a.duration || 0) * 1000;
+    const ms = (a.duration || 0) * 1000;
+    if (!ms) return;
+    library.reportDuration(track, ms);
     document.querySelectorAll('.track').forEach((row) => {
       if (row.dataset.trackId === track.id) {
         const d = row.querySelector('.track__dur');
-        if (d) d.textContent = fmtMs(track.duration);
+        if (d) d.textContent = fmtMs(ms);
       }
     });
   });
-}
-
-function handleFiles(fileList) {
-  const files = Array.from(fileList || []);
-  const added = [];
-  for (const f of files) {
-    if (!f.type.startsWith('audio') && !/\.(mp3|flac|wav|ogg|m4a|aac)$/i.test(f.name)) continue;
-    const url = URL.createObjectURL(f);
-    const ext = (f.name.split('.').pop() || '').toUpperCase();
-    const t = {
-      id: 'local:' + url, name: f.name.replace(/\.[^.]+$/, ''), artist: '本地文件',
-      album: ext, albumPic: '', duration: 0, source: 'local', url, file: f,
-    };
-    readMeta(t);
-    store.addLocal(t);
-    added.push(t);
-  }
-  renderLocal();
-  if (added.length) {
-    const lib = store.getLibrary();
-    playCollection(lib, 0);
-    toast(`已导入 ${added.length} 首本地音乐`);
-  } else toast('未识别到音频文件');
+  a.addEventListener('error', () => { a.src = ''; }, { once: true });
 }
 
 /* ---------------- 视图：我的 ---------------- */
+const MINE_TABS = [
+  { key: 'fav', label: '收藏' },
+  { key: 'his', label: '历史' },
+  { key: 'queue', label: '队列' },
+  { key: 'sheet', label: '我的歌单' },
+  { key: 'pin', label: '订阅歌单' },
+];
 let mineTab = 'fav';
 let minePage = 1; // 收藏/历史/队列客户端分页页码
 function renderMine() {
   view.innerHTML = '';
-  view.appendChild(heading('LIBRARY', '我的', '收藏、播放历史与当前队列。'));
+  view.appendChild(heading('LIBRARY', '我的', '收藏、播放历史、当前队列与本地歌单。'));
   const favs = playableList(store.get('favorites') || []);
   const history = playableList(store.get('history') || []);
-  const tabsData = [
-    { key: 'fav', label: '收藏', count: favs.length },
-    { key: 'his', label: '历史', count: history.length },
-    { key: 'queue', label: '队列', count: player.queue.length },
-  ];
+  const tabsData = MINE_TABS.map((t) => ({
+    ...t,
+    count: t.key === 'fav' ? favs.length
+      : t.key === 'his' ? history.length
+      : t.key === 'queue' ? player.queue.length
+      : t.key === 'sheet' ? store.getSheets().length
+      : store.getPins().length,
+  }));
   const tabs = el('div', { class: 'tabs reveal' });
   tabsData.forEach((t) => {
     tabs.appendChild(el('div', {
@@ -610,6 +792,9 @@ function renderMine() {
   view.appendChild(tabs);
   const out = el('div', { class: 'reveal' });
   view.appendChild(out);
+
+  if (mineTab === 'sheet') { renderMineSheets(out); revealIn(); applyLang(currentLang()); return; }
+  if (mineTab === 'pin') { renderMinePins(out); revealIn(); applyLang(currentLang()); return; }
 
   if (mineTab === 'queue') {
     if (!player.queue.length) {
@@ -633,6 +818,11 @@ function renderMine() {
         onPlay: (all, i) => player.playAt(i),
         onAddQueue: false,
         onFav: false,
+        onMenu: (t, i, pos) => openTrackMenu(t, i, pos, {
+          scope: player.queue,
+          removeTitle: '移出队列',
+          onRemove: (tt, ii) => { player.removeFromQueue(ii); toast('已从队列移除'); renderMine(); },
+        }),
         onRemove: (all, i) => {
           player.removeFromQueue(i);
           toast('已从队列移除');
@@ -661,14 +851,11 @@ function renderMine() {
           el('button', { class: 'btn btn--small', onclick: () => playCollection(tracks, 0) }, [icon('play'), '播放全部']),
           el('button', {
             class: 'btn btn--small btn--danger',
-            onclick: () => {
-              if (mineTab === 'fav') {
-                if (!confirm('清空全部收藏？')) return;
-                store.set({ favorites: [] });
-              } else {
-                if (!confirm('清空播放历史？')) return;
-                store.clearHistory();
-              }
+            onclick: async () => {
+              const label = mineTab === 'fav' ? '收藏' : '播放历史';
+              if (!await confirmModal({ title: `清空${label}`, desc: `确定清空全部 ${tracks.length} 条${label}？此操作不可撤销。`, okText: '清空', danger: true })) return;
+              if (mineTab === 'fav') store.set({ favorites: [] });
+              else store.clearHistory();
               toast('已清空');
               updateFavButtons();
               syncFavRows();
@@ -681,19 +868,350 @@ function renderMine() {
       const { list, pager: pg } = paginatedTrackList(tracks, minePage, {
         onPlay: (all, i) => playCollection(all, i),
         onAddQueue: addQueueWithToast,
-        onRemove: (all, i) => {
-          if (mineTab === 'fav') store.removeFav(all[i]);
-          else store.removeHistory(all[i]);
-          updateFavButtons();
-          toast('已移除');
-          renderMine();
-        },
+        onMenu: (t, i, pos) => openTrackMenu(t, i, pos, {
+          scope: tracks,
+          removeTitle: '移除',
+          onRemove: (tt) => removeMineTrack(tt),
+        }),
+        onRemove: (all, i) => removeMineTrack(all[i]),
         removeTitle: '移除',
         onPage: (p) => { minePage = p; renderMine(); $('view').scrollTop = 0; },
       });
       out.appendChild(list);
       if (pg.pageCount > 1) out.appendChild(pg);
     }
+  }
+  revealIn();
+}
+
+/* ---------------- 本地命名歌单（落盘） ---------------- */
+function removeMineTrack(t) {
+  if (mineTab === 'fav') store.removeFav(t);
+  else store.removeHistory(t);
+  updateFavButtons();
+  toast('已移除');
+  renderMine();
+}
+
+function sheetCard(s) {
+  const card = el('div', {
+    class: 'pl-card reveal', role: 'button', tabindex: '0',
+    'aria-label': `打开歌单 ${s.name}`,
+    onclick: () => navigate('sheet', s.id),
+    onkeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate('sheet', s.id); } },
+    oncontextmenu: (e) => { e.preventDefault(); openSheetMenu(s, e.clientX, e.clientY); },
+  });
+  card.style.transitionDelay = '0ms';
+  card.appendChild(cover(s.id, ''));
+  card.querySelector('.pl-card__cover').appendChild(
+    el('button', { class: 'pl-card__play', title: '打开歌单', 'aria-label': '打开歌单', onclick: (e) => { e.stopPropagation(); navigate('sheet', s.id); } }, [icon('play')]),
+  );
+  card.appendChild(el('div', { class: 'pl-card__name', text: s.name }));
+  card.appendChild(el('div', { class: 'pl-card__meta', text: `${s.tracks.length} 首 · 本地歌单` }));
+  return card;
+}
+
+function openSheetMenu(s, x, y) {
+  openMenu(x, y, [
+    { text: '打开', iconName: 'play', run: () => navigate('sheet', s.id) },
+    { text: '播放全部', iconName: 'stage', run: () => playCollection(playableList(s.tracks), 0) },
+    { text: '加入队列', iconName: 'plus', run: () => addAllToQueue(playableList(s.tracks)) },
+    { sep: true },
+    { text: '重命名', iconName: 'sheet', run: () => renameSheet(s) },
+    { text: '删除歌单', iconName: 'trash', danger: true, run: () => deleteSheet(s) },
+  ]);
+}
+
+async function createSheetInteractive() {
+  const name = await promptText({ title: '新建歌单', label: '歌单名称', placeholder: '例如：深夜写代码', okText: '创建' });
+  if (name === null) return null;
+  if (!name.trim()) return toast('歌单名称不能为空');
+  const sheet = store.createSheet(name);
+  toast(`已创建歌单「${sheet.name}」`);
+  if (currentRoute === 'mine') renderMine();
+  return sheet;
+}
+
+async function renameSheet(s) {
+  const name = await promptText({ title: '重命名歌单', label: '歌单名称', value: s.name, okText: '保存' });
+  if (name === null || !name.trim()) return;
+  store.updateSheet(s.id, { name });
+  toast('已重命名');
+  if (currentRoute === 'sheet' && location.hash.includes(s.id)) renderSheet(s.id, ++routeToken);
+  else if (currentRoute === 'mine') renderMine();
+}
+
+async function deleteSheet(s) {
+  const ok = await confirmModal({ title: '删除歌单', desc: `确定删除「${s.name}」？歌单里的 ${s.tracks.length} 首曲目记录会一起删除，收藏与本地曲库不受影响。`, okText: '删除', danger: true });
+  if (!ok) return;
+  store.removeSheet(s.id);
+  toast('已删除歌单');
+  if (currentRoute === 'sheet') navigate('mine');
+  else renderMine();
+}
+
+// 「加入歌单」：右键菜单入口。没有歌单时先建一个，避免用户点了没反应
+async function openAddToSheetDialog(track, pos = null) {
+  const sheets = store.getSheets();
+  if (!sheets.length) {
+    const sheet = await createSheetInteractive();
+    if (sheet) addTrackToSheet(sheet.id, track, sheet.name);
+    return;
+  }
+  const inSheets = new Set(store.sheetsOfTrack(track));
+  const items = sheets.slice(0, 10).map((s) => ({
+    text: s.name,
+    iconName: 'sheet',
+    on: inSheets.has(s.id),
+    run: () => toggleSheetTrack(s.id, track, s.name),
+  }));
+  items.push({ sep: true });
+  items.push({ text: '新建歌单…', iconName: 'plus', run: () => createAndAdd(track) });
+  openMenu(pos?.x ?? Math.round(window.innerWidth / 2), pos?.y ?? 140, items);
+}
+
+async function createAndAdd(track) {
+  const sheet = await createSheetInteractive();
+  if (sheet) addTrackToSheet(sheet.id, track, sheet.name);
+}
+
+function addTrackToSheet(sheetId, track, sheetName) {
+  if (!store.addSheetTrack(sheetId, track)) return toast('这首歌已经在歌单里了');
+  toast(`已加入「${sheetName}」`);
+  refreshSheetViews(sheetId);
+}
+
+function toggleSheetTrack(sheetId, track, sheetName) {
+  if (store.sheetsOfTrack(track).includes(sheetId)) {
+    store.removeSheetTrack(sheetId, trackKey(track));
+    toast(`已从「${sheetName}」移除`);
+  } else {
+    return addTrackToSheet(sheetId, track, sheetName);
+  }
+  refreshSheetViews(sheetId);
+}
+
+// 歌单内容变了，只重绘正在显示的相关视图（侧栏计数 + 歌单页 / 我的页）
+function refreshSheetViews(sheetId) {
+  if (currentRoute === 'sheet' && location.hash.includes(sheetId)) renderSheet(location.hash.split('/')[2], ++routeToken);
+  else if (currentRoute === 'mine' && mineTab === 'sheet') renderMine();
+}
+
+function renderMineSheets(out) {
+  const sheets = store.getSheets();
+  out.appendChild(el('div', { class: 'lib-toolbar' }, [
+    (() => { const n = el('div', { class: 'lib-toolbar__info' }); tpl(n, '本机歌单 <b>{n}</b> 个 · 只存在这台设备上', { n: sheets.length }); return n; })(),
+    el('div', { class: 'lib-toolbar__actions' }, [
+      el('button', { class: 'btn btn--small', onclick: () => createSheetInteractive() }, [icon('plus'), '新建歌单']),
+    ]),
+  ]));
+  if (!sheets.length) {
+    out.appendChild(emptyState({
+      iconName: 'sheet', title: '还没有本地歌单',
+      desc: '在任何曲目上右键 → 加入歌单，就能把散落的歌收进一个袋子里；歌单只保存在本机，重启也在。',
+      actions: [
+        el('button', { class: 'btn btn--primary', onclick: () => createSheetInteractive() }, [icon('plus'), '新建第一个歌单']),
+        el('button', { class: 'btn', onclick: () => navigate('discover') }, [icon('discover'), '去发现音乐']),
+      ],
+    }));
+    return;
+  }
+  const grid = el('div', { class: 'grid' });
+  sheets.forEach((s) => grid.appendChild(sheetCard(s)));
+  grid.appendChild(el('div', {
+    class: 'pl-card--new', role: 'button', tabindex: '0',
+    'aria-label': '新建歌单', text: '',
+    onclick: () => createSheetInteractive(),
+    onkeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); createSheetInteractive(); } },
+  }, [icon('plus'), el('span', { text: '新建歌单' })]));
+  out.appendChild(grid);
+}
+
+/* ---------------- 视图：单个本地歌单 ---------------- */
+let sheetPage = 1; // 本地歌单客户端分页页码
+async function renderSheet(id, token) {
+  view.innerHTML = '';
+  view.appendChild(el('button', { class: 'backbtn', onclick: goBack }, [icon('chevron-left'), '返回']));
+  const s = store.findSheet(id);
+  if (!s) {
+    view.appendChild(emptyState({
+      iconName: 'sheet', title: '歌单不存在或已删除',
+      actions: [el('button', { class: 'btn', onclick: () => navigate('mine') }, [icon('heart'), '回到我的'])],
+    }));
+    return;
+  }
+  if (token == null) token = routeToken;
+  const tracks = playableList(s.tracks);
+  const coverEl = el('div', { class: 'pl-hero__cover' });
+  setCover(coverEl, s.id, '');
+  const body = el('div', { class: 'pl-hero__body' }, [
+    el('div', { class: 'kicker', text: 'LOCAL PLAYLIST' }),
+    el('h1', { class: 'pl-hero__name', text: s.name }),
+    el('div', { class: 'pl-hero__meta' }, [
+      el('span', { class: 'meta-chip meta-chip--accent' }, [icon('music'), `${s.tracks.length} 首`]),
+      s.desc ? el('span', { class: 'meta-chip' }, [icon('spark'), s.desc]) : null,
+      el('span', { class: 'meta-chip' }, [icon('clock'), `更新于 ${new Date(s.updatedAt || s.createdAt).toLocaleDateString()}`]),
+    ]),
+    el('div', { class: 'pl-hero__cta' }, [
+      el('button', { class: 'btn-primary', onclick: () => playCollection(tracks, 0) }, [icon('play'), '播放全部']),
+      el('button', { class: 'btn-ghost', onclick: () => shuffleCollection(tracks) }, [icon('shuffle'), '随机播放']),
+      el('button', { class: 'btn-ghost', onclick: () => addAllToQueue(tracks) }, [icon('plus'), '加入队列']),
+      el('button', { class: 'btn-ghost', onclick: () => renameSheet(s) }, [icon('sheet'), '重命名']),
+      el('button', { class: 'btn-ghost', onclick: () => deleteSheet(s) }, [icon('trash'), '删除']),
+    ]),
+  ]);
+  view.appendChild(el('div', { class: 'pl-hero reveal' }, [coverEl, body]));
+
+  if (!tracks.length) {
+    view.appendChild(emptyState({
+      iconName: s.tracks.length ? 'alert' : 'music',
+      title: s.tracks.length ? '这些本地曲目已不在曲库' : '这个歌单还是空的',
+      desc: s.tracks.length ? '本地文件被移动或删除后无法播放，可在「本地音乐」重新导入。' : '在任意曲目行右键 → 加入歌单，把歌收进来。',
+      actions: [el('button', { class: 'btn', onclick: () => navigate('local') }, [icon('local'), '去本地音乐'])],
+    }));
+  } else {
+    const { list, pager: pg } = paginatedTrackList(tracks, sheetPage, {
+      onPlay: (all, i) => playCollection(all, i),
+      onAddQueue: addQueueWithToast,
+      onRemove: (all, i) => {
+        store.removeSheetTrack(s.id, trackKey(all[i]));
+        toast('已从歌单移除');
+        renderSheet(s.id, ++routeToken);
+      },
+      removeTitle: '移出歌单',
+      onMenu: (t, i, pos) => openTrackMenu(t, i, pos, { scope: tracks }),
+      onPage: (p) => { sheetPage = p; renderSheet(s.id, ++routeToken); $('view').scrollTop = 0; },
+    });
+    view.appendChild(list);
+    if (pg.pageCount > 1) view.appendChild(pg);
+  }
+  revealIn();
+  applyLang(currentLang());
+}
+
+/* ---------------- 曲目右键菜单 ---------------- */
+function openTrackMenu(track, index, pos, { scope = null, onRemove = null, removeTitle = '移除' } = {}) {
+  const faved = store.isFav(trackKey(track));
+  const inSheets = new Set(store.sheetsOfTrack(track));
+  const items = [
+    { label: track.name },
+    { text: '播放', iconName: 'play', run: () => (scope ? playCollection(scope, index) : player.playTrack(track, [track], 0)) },
+    { text: '下一首播放', iconName: 'plus', run: () => addQueueWithToast(track) },
+    { text: faved ? '取消收藏' : '收藏', iconName: faved ? 'heart-fill' : 'heart', on: faved, run: () => { store.toggleFav(track); window.dispatchEvent(new CustomEvent('guman:favchange')); } },
+    { sep: true },
+    { text: '加入歌单…', iconName: 'sheet', run: () => openAddToSheetDialog(track, pos) },
+  ];
+  store.getSheets().slice(0, 6).forEach((s) => items.push({
+    text: s.name, iconName: 'sheet', on: inSheets.has(s.id), run: () => toggleSheetTrack(s.id, track, s.name),
+  }));
+  if (track.source !== 'local' && store.get('downloadEnabled')) {
+    items.push({ sep: true }, { text: '下载这首歌', iconName: 'download', run: () => downloadTrack(track) });
+  }
+  if (onRemove) items.push({ sep: true }, { text: removeTitle, iconName: 'trash', danger: true, run: () => onRemove(track, index) });
+  openMenu(pos.x, pos.y, items);
+}
+
+/* ---------------- 收藏的在线歌单 ---------------- */
+function pinCard(p) {
+  const card = el('div', {
+    class: 'pl-card reveal', role: 'button', tabindex: '0',
+    'aria-label': `打开歌单 ${p.name}`,
+    onclick: () => openPlaylist(p),
+    oncontextmenu: (e) => {
+      e.preventDefault();
+      openMenu(e.clientX, e.clientY, [
+        { text: '打开', iconName: 'play', run: () => openPlaylist(p) },
+        { text: '取消收藏', iconName: 'trash', danger: true, run: () => unpin(p) },
+      ]);
+    },
+  });
+  card.appendChild(cover(p.id, p.picUrl));
+  card.querySelector('.pl-card__cover').appendChild(
+    el('button', { class: 'pl-card__play', title: '打开歌单', 'aria-label': '打开歌单', onclick: (e) => { e.stopPropagation(); openPlaylist(p); } }, [icon('play')]),
+  );
+  card.appendChild(el('div', { class: 'pl-card__name', text: p.name }));
+  card.appendChild(el('div', { class: 'pl-card__meta', text: [p.trackCount ? `${p.trackCount} 首` : '', p.creator || ''].filter(Boolean).join(' · ') }));
+  return card;
+}
+
+// 收藏在线歌单：本机清单先落盘（保证离线也能看到），登录状态下再尽力同步到网易云
+async function toggleSubscribe(pl) {
+  const obj = { ...normalizePlaylist(pl), trackCount: pl.trackCount };
+  const on = store.togglePin(obj);
+  toast(on ? '已收藏歌单' : '已取消收藏歌单');
+  if (accountState().loggedIn) {
+    try { await api.subscribePlaylist(pl.id, on ? 1 : 0); }
+    catch (e) { toast('网易云端同步失败：' + (e.message || '接口不可用'), 4500, 'error'); }
+  }
+  if (currentRoute === 'playlist') renderPlaylist(String(pl.id), routeToken);
+}
+
+function unpin(p) {
+  store.togglePin(p);
+  toast('已取消收藏歌单');
+  renderMine();
+}
+
+async function importPlaylistByLink() {
+  const raw = await promptText({
+    title: '导入歌单', label: '网易云歌单链接或 ID',
+    placeholder: 'https://music.163.com/#/playlist?id=xxxxxxx', okText: '收藏',
+  });
+  if (raw === null) return;
+  const id = String(raw).match(/\d{5,}/)?.[0];
+  if (!id) return toast('没有识别到歌单 ID');
+  toast('正在读取歌单…');
+  try {
+    const r = await api.playlistDetail(id);
+    const pl = r.playlist;
+    if (!pl?.id) throw new Error('歌单不存在或无权访问');
+    if (store.isPinned(pl.id)) { openPlaylist(pl); return; }
+    store.togglePin(normalizePlaylist(pl));
+    toast(`已收藏「${pl.name}」`);
+    if (currentRoute === 'mine') renderMine();
+  } catch (e) {
+    toast('导入失败：' + (e.message || '歌单不存在'), 5000, 'error');
+  }
+}
+
+function renderMinePins(out) {
+  const pins = store.getPins();
+  out.appendChild(el('div', { class: 'lib-toolbar' }, [
+    (() => { const n = el('div', { class: 'lib-toolbar__info' }); tpl(n, '本机收藏歌单 <b>{n}</b> 个', { n: pins.length }); return n; })(),
+    el('div', { class: 'lib-toolbar__actions' }, [
+      el('button', { class: 'btn btn--small', onclick: () => importPlaylistByLink() }, [icon('link'), '导入歌单链接']),
+    ]),
+  ]));
+  if (pins.length) {
+    const grid = el('div', { class: 'grid' });
+    pins.forEach((p) => grid.appendChild(pinCard(p)));
+    out.appendChild(grid);
+  } else {
+    out.appendChild(emptyState({
+      iconName: 'heart', title: '还没有收藏在线歌单',
+      desc: '在歌单详情页点「收藏歌单」，或粘贴网易云歌单链接导入。收藏只记录在本机。',
+      actions: [
+        el('button', { class: 'btn btn--primary', onclick: () => importPlaylistByLink() }, [icon('link'), '导入歌单链接']),
+        el('button', { class: 'btn', onclick: () => navigate('hall') }, [icon('hall'), '去音乐馆']),
+      ],
+    }));
+  }
+  // 登录后可再拉一层云端订阅（与本机收藏分开显示，避免用户以为丢数据）
+  if (accountState().loggedIn) {
+    const sec = el('section', { class: 'section' }, [
+      el('div', { class: 'section__head' }, [el('div', { class: 'section__title', html: '网易云订阅 <span class="section__sub">来自账号</span>' })]),
+      skeletonCards(4),
+    ]);
+    out.appendChild(sec);
+    const box = sec.querySelector('.grid') || sec;
+    api.subscribedPlaylists().then((r) => {
+      const list = (r.subscribed || []).map(normalizePlaylist);
+      const grid = el('div', { class: 'grid' });
+      renderPlaylistGrid(grid, list, openPlaylist);
+      const skel = sec.querySelector('.grid');
+      (skel || box).replaceWith(grid);
+      revealIn();
+    }).catch(() => sec.remove());
   }
   revealIn();
 }
@@ -724,6 +1242,7 @@ function paginatedTrackList(all, page, opts = {}) {
     onFav: opts.onFav,
     onRemove: opts.onRemove ? (t, i) => opts.onRemove(all, start + i) : null,
     removeTitle: opts.removeTitle,
+    onMenu: opts.onMenu ? (t, i, pos) => opts.onMenu(t, start + i, pos) : null,
     showSource: !!store.get('showSourceTag'),
     onDownload: store.get('downloadEnabled') ? (t) => downloadTrack(t) : null,
   });
@@ -766,6 +1285,8 @@ async function renderPlaylist(id, token) {
         el('button', { class: 'btn-primary', onclick: () => playCollection(songs, 0) }, [icon('play'), '播放全部']),
         el('button', { class: 'btn-ghost', onclick: () => shuffleCollection(songs) }, [icon('shuffle'), '随机播放']),
         el('button', { class: 'btn-ghost', onclick: () => addAllToQueue(songs) }, [icon('plus'), '加入队列']),
+        el('button', { class: 'btn-ghost' + (store.isPinned(pl.id) ? ' is-on' : ''), onclick: () => toggleSubscribe(pl) },
+          [icon(store.isPinned(pl.id) ? 'heart-fill' : 'heart'), store.isPinned(pl.id) ? '已收藏歌单' : '收藏歌单']),
       ]),
     ]);
     view.appendChild(el('div', { class: 'pl-hero reveal' }, [coverEl, body]));
@@ -782,6 +1303,7 @@ async function renderPlaylist(id, token) {
         onPlay: (all, i) => playCollection(all, i),
         showAlbum: songs.some((s) => s.album),
         onAddQueue: addQueueWithToast,
+        onMenu: (t, i, pos) => openTrackMenu(t, i, pos, { scope: songs }),
         onPage: (p) => { plPage = p; renderPlaylist(id, ++routeToken); $('view').scrollTop = 0; },
       });
       view.appendChild(list);
@@ -1066,10 +1588,9 @@ function syncFavRows() {
   });
 }
 
-// 本地文件的 objectURL 只在本次会话有效；刷新后过滤掉失效记录
+// 收藏/历史里的本地曲目只有仍在曲库清单中才可播放（文件被移动或删除后 url 已失效）
 function playableList(list) {
-  const lib = store.getLibrary();
-  return (list || []).filter((t) => t.source !== 'local' || lib.some((l) => l.url === t.url));
+  return (list || []).filter((t) => t.source !== 'local' || library.containsUrl(t.url));
 }
 
 /* ---------------- 歌词 ---------------- */
@@ -1509,6 +2030,21 @@ function bindControls() {
   document.querySelectorAll('.nav__item').forEach((b) => b.addEventListener('click', () => navigate(b.dataset.route)));
   document.querySelectorAll('.pill').forEach((b) => b.addEventListener('click', () => openMood(b.dataset.mood)));
 
+  // 侧边栏账号：未登录时点击 = 打开扫码登录，已登录时点击 = 账号菜单
+  const accountBtn = $('accountBtn');
+  if (accountBtn) {
+    accountBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      const r = accountBtn.getBoundingClientRect();
+      openAccountMenu(r.right + 8, r.top);
+    });
+  }
+  // 账号菜单里的项目通过事件回传（account.js 不依赖 app.js，避免循环引用）
+  window.addEventListener('guman:navigate', (e) => {
+    const { name, param } = e.detail || {};
+    if (name) navigate(name, param);
+  });
+
   // 拖拽文件时阻止浏览器打开
   ['dragover', 'drop'].forEach((ev) => document.addEventListener(ev, (e) => {
     if (!e.target.closest?.('.dropzone')) e.preventDefault();
@@ -1755,6 +2291,7 @@ async function downloadTrack(track) {
 /* ---------- 启动 ---------------- */
 // 模式徽标：NCM 子进程探测最多需要 90s，启动时查一次会永远停在"离线示例"，
 // 因此短轮询刷新，探测完成后自动变为"在线曲库"（绿点）。
+let lastOnline = null;
 async function refreshMode() {
   const m = await api.mode().catch(() => null);
   const badge = $('apiMode');
@@ -1762,6 +2299,8 @@ async function refreshMode() {
   badge.textContent = m.online ? '在线曲库' : '离线示例';
   badge.classList.toggle('is-online', !!m.online);
   badge.title = m.online ? '已连接网易云曲库' : '网易云接口暂不可达，使用内置示例曲库';
+  // 上游从不可达变为可达时，账号登录态与「能否登录」都要跟着刷新
+  if (lastOnline !== m.online) { lastOnline = m.online; refreshAccount(); }
 }
 
 async function boot() {
@@ -1769,6 +2308,8 @@ async function boot() {
 
   await refreshMode();
   setInterval(refreshMode, 3000);
+  // 先恢复本地曲库清单，否则收藏/历史里的本地曲目会在首屏被误判为已失效
+  await library.load();
   document.title = '孤男音乐 · 桌面声场';
 
   // 初始封面：没有播放内容时也保持视觉完整
@@ -1797,6 +2338,13 @@ async function boot() {
   updateFavButtons();
   updateVolumeUI(store.get('volume'), store.get('muted'));
   window.addEventListener('guman:favchange', () => { updateFavButtons(); syncFavRows(); });
+  // 登录/退出后重画首屏：每日推荐的数据源与侧栏文案都依赖登录态
+  window.addEventListener('guman:accountchange', () => {
+    paintAccount();
+    localStorage.removeItem(DAILY_KEY);
+    if (currentRoute === 'discover') renderDiscover(routeToken);
+    if (currentRoute === 'mine' && mineTab === 'pin') renderMine();
+  });
 
   // 可视化（分析器在首次播放时创建）
   player.on('trackchange', () => {
@@ -1822,6 +2370,8 @@ async function boot() {
   if (!location.hash) history.replaceState(null, '', '#/discover');
   await router();
   restoreScroll();
+  await refreshAccount(); // 登录态决定首屏每日推荐用哪个数据源
+  if (currentRoute === 'discover') renderDiscover(routeToken);
 }
 
 // 列表滚动位置记忆（列表设置 → 记住播放列表滚动位置）
