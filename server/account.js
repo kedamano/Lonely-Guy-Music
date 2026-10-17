@@ -116,6 +116,15 @@ async function refreshStatus() {
   try {
     const j = await ncm('/login/status');
     const user = pickUser(j);
+    // /login/status 不带听歌等级，只有 /user/detail 有；缺了就补一次（登录/启动各一次，不进热路径）
+    if (user.userId && !user.level) {
+      try {
+        const d = await ncm('/user/detail', { uid: user.userId });
+        const dd = d?.data || d || {};
+        user.level = Number(dd.level || 0);
+        if (!user.nickname && dd.profile?.nickname) user.nickname = String(dd.profile.nickname);
+      } catch (_) { /* 等级拿不到不影响登录态 */ }
+    }
     if (user.userId) {
       state.user = user;
       save();
