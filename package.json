@@ -1,6 +1,6 @@
 {
   "name": "guman-music",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "孤男音乐 · 桌面音乐客户端（多平台搜索 + 洛雪音源 + 空间音频 + 实时频谱 + 卡拉OK歌词）",
   "main": "main.js",
   "author": "孤男音乐",
