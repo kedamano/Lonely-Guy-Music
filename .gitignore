@@ -22,8 +22,12 @@ dist/
 .tmp_ui2/
 _lx_extract/
 scripts/shots/
-scripts/*shot*.png
+scripts/*.png
 
 # 构建资源仅保留图标（其余由 npm run icons 生成）
 build/*
 !build/icon.ico
+
+# 打包中间产物（dist 被占用/重试时 electron-builder 留下的副本）
+dist-old*/
+dist-prev*/

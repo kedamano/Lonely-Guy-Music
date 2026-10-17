@@ -1,124 +1,250 @@
-# 孤男音乐 · 桌面声场
+<div align="center">
 
-一个以 [yy.juhuang.xyz（魔力音乐）](https://yy.juhuang.xyz/) 为视觉蓝本、参考社区音乐客户端形态重建的 **Electron 桌面音乐软件**。
-在"类网易云"的发现/歌单/搜索体验之上，新增了桌面端专属的**实时频谱可视化、图形均衡器、卡拉OK歌词、睡眠定时淡出、本地音乐导入、迷你模式、全局媒体键**等特色能力，并内置 **LX Music（洛雪音乐）自定义音源系统**，支持导入社区音源脚本全线上搜歌/取链/播放。
+<img src="docs/icon.png" width="96" alt="孤男音乐 logo">
 
-> 说明：你最初给的 `github.com/morluto/rea` 其实是逆向工程工具 **REA**，与音乐无关，因此本项目的视觉/功能参考采用线上站 `yy.juhuang.xyz`；音源体系则逆向并兼容 [洛雪音乐自定义源 API](https://lxmusic.toside.cn/desktop/custom-source)。
+# 孤男音乐 · Guman Music
 
----
+**🎧 一个把「发现音乐」和「声场体验」都做足的 Electron 桌面音乐客户端**
 
-## ✨ 功能
+在线网易云曲库 · 洛雪自定义音源 · 实时频谱 · 卡拉OK歌词 · 10 段均衡器 · 桌面歌词 · 本地音乐
 
-**基础（致敬参考站）**
-- 发现页精选歌单墙、音乐馆分类浏览、歌曲/歌单搜索
-- 歌单详情与一键播放全部、随机播放、整单加入队列
-- 播放 / 暂停 / 上一首 / 下一首 / 随机 / 循环（列表·单曲·顺序）
-- **实时搜索**：输入即搜（300ms 防抖）+ 回车立即执行，切 tab 保留关键词与结果，搜索历史可复用
-- **真实交互**：曲目行悬停快捷操作、可拖拽进度/音量、收藏与历史可移除/清空、播放队列抽屉可增删跳播
-- **正在播放浮层**：大封面 + 卡拉 OK 歌词，点击歌词跳转，自带进度与播放控制
-- **响应式布局**：窄窗口自动收起侧栏文字、隐藏次要列与控件
+[![Version](https://img.shields.io/badge/version-1.1.0-ff6a2c?style=flat-square)](https://github.com/kedamano/Lonely-Guy-Music/releases)
+[![Electron](https://img.shields.io/badge/Electron-44-47848F?style=flat-square&logo=electron&logoColor=white)](https://www.electronjs.org/)
+[![Tests](https://img.shields.io/badge/tests-96%20checks-passing-3fb950?style=flat-square)](#-ui-回归测试)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-8957e5?style=flat-square)](https://github.com/kedamano/Lonely-Guy-Music/releases)
+[![License](https://img.shields.io/badge/license-MIT-c9d1d9?style=flat-square)](LICENSE)
+[![i18n](https://img.shields.io/badge/语言-简体%20%7C%20繁體%20%7C%20EN-ff6a2c?style=flat-square)](#-界面语言)
 
-**🎵 洛雪音源系统（核心新增）**
-- 完整兼容 LX Music 自定义源脚本（`globalThis.lx` 事件模型：`inited` / `request` / `updateAlert`）
-- 音源脚本在 Node `vm` 沙箱中运行，提供 `lx.request`（HTTP 全功能：headers/body/form/formData/timeout/重定向）、`lx.utils`（buffer/crypto/zlib）
-- **设置页 → 音乐来源**：音源列表、启用/禁用、默认音质（FLAC 24bit/FLAC/320K/192K/128K，自动向下回退）、歌词页背景（封面模糊 / 封面主色 / 应用背景）
-- **自定义源管理**：导入本地 `.js`、从 URL 安装、删除；持久化到 `userData/sources/`
-- **网络代理**：默认直连（不读系统代理环境变量），仅当网络需要时才在设置中填写，保存即生效
-- 播放链路：网易云搜索元数据 → 已启用音源逐个尝试取真实 URL → 同源代理播放；全部音源失败自动降级网易云官方接口
-- 支持平台：酷我(kw)/酷狗(kg)/QQ(tx)/网易(wy)/咪咕(mg)/汽水(qs)
+[English](README_EN.md) | 简体中文
 
-**桌面端新增特色**
-- 🎚 **声场面板**：实时环形频谱可视化（Web Audio `AnalyserNode`，无音频时待机波形）+ 10 段图形均衡器（多套预设）
-- 🎤 **卡拉OK歌词**：LRC 逐行高亮 + 自动滚动 + 点击行跳转（正在播放浮层）；支持逐字填充、当前行缩放、延迟滚动、拖拽调进度、三种对齐方式
-- 💤 **睡眠定时**：到点先淡出再暂停，不打扰入睡，面板内实时倒计时
-- 📂 **本地音乐**：拖入/选择文件或文件夹，导入 mp3/flac 等，用同一套播放器与声场真实出声；可单曲移除
-- 🖥 **桌面歌词**：独立无边框透明置顶窗口，三色（未播/已播/阴影）自定义、字号/加粗/对齐可调、可锁定鼠标穿透、点击唤出主窗口
-- ⬇️ **下载**：曲目行与歌词页一键下载，命名规则可配（歌曲名-艺术家/艺术家-歌曲名/歌曲名），可预设目录或每次询问
-- 🪟 **迷你模式 / 无边框窗口**：自定义标题栏（迷你播放 + 最小化/最大化/关闭）、系统托盘驻留；迷你模式会真实缩放窗口并置顶
-- ⌨️ **全局快捷键**：空格播放/暂停、←→ 快退快进、↑↓ 音量、`MediaPlayPause` 等媒体键、托盘播放控制
-- 🧭 **系统媒体会话**：Windows/macOS 媒体面板显示曲目信息并支持播放/暂停/切歌/跳转；任务栏图标实时显示播放进度
-- 🌐 **三语言界面**：简体中文 / 繁體中文 / English，设置页切换即时生效（含动态文案模板匹配）
-- 🎨 **外观**：暗夜声场主题，4 套强调色（信号琥珀/霓虹紫/电子青/玫红）一键切换；窗口 4 档尺寸、6 档字号、动画可关（低性能设备更流畅）
-- 💾 **本地持久化**：音量、EQ、强调色、收藏、播放历史、搜索历史、音源配置、声场面板开合状态，以及全部设置项（播放/歌词/列表/下载/外观/语言）与每首歌的播放进度
+**[⬇️ 下载安装包](#-快速开始)** · **[✨ 功能总览](#-功能总览)** · **[🎮 快捷键](#-全局快捷键)** · **[🧱 架构设计](#-架构设计)** · **[❓ FAQ](#-faq)**
 
-**易用性细节**
-- 所有列表（音乐馆/搜索/歌单/本地/我的）均带分页：音乐馆与搜索走服务端分页（每页 30），超长歌单走客户端分页（每页 50）
-- 曲目名后可标注来源平台（网易云/本地），播放列表滚动位置记忆、双击歌曲可切换当前列表播放、加队列位置可选顶部/底部
-- 播放时阻止系统休眠、播放错误自动切下一首、启动自动续播上次歌曲与进度
+![孤男音乐主界面](docs/screenshots/soundstage.png)
+
+</div>
 
 ---
 
-## 🚀 运行
+## 目录
+
+- [为什么做这个项目](#为什么做这个项目)
+- [功能总览](#-功能总览)
+- [快速开始](#-快速开始)
+- [界面一览](#-界面一览)
+- [全局快捷键](#-全局快捷键)
+- [架构设计](#-架构设计)
+- [洛雪音源系统](#-洛雪音源系统)
+- [UI 回归测试](#-ui-回归测试)
+- [路线图](#-路线图)
+- [FAQ](#-faq)
+- [参与贡献](#-参与贡献)
+- [免责声明](#-免责声明)
+- [开源许可](#-开源许可)
+
+---
+
+## 为什么做这个项目
+
+市面上的桌面音乐播放器大多二选一：要么只做「曲库门户」，要么只做「本地播放」。
+孤男音乐想把两边都做到位——
+
+- **曲库侧**：类网易云的发现/音乐馆/搜索体验，配上**洛雪自定义音源系统**，导入社区音源脚本即可全线上搜歌、取链、播放；
+- **声场侧**：这不是一个「能放歌就行」的播放器——**实时环形频谱、10 段图形均衡器、逐字卡拉OK歌词、桌面歌词、睡眠淡出**，全部基于 Web Audio 真实接通音频流，而不是摆设。
+
+> 灵感来源：视觉与交互参考了 [魔力音乐](https://yy.juhuang.xyz/)，音源体系兼容 [洛雪音乐自定义源 API](https://lxmusic.toside.cn/desktop/custom-source)。在此致敬。
+
+---
+
+## ✨ 功能总览
+
+### 🎵 曲库与播放
+
+| 功能 | 说明 |
+|---|---|
+| 发现 / 音乐馆 / 搜索 | 精选歌单墙、分类浏览、输入即搜（300ms 防抖）+ 回车执行，切页保留关键词与结果 |
+| 歌单详情 | 一键播放全部 / 随机播放 / 整单加入队列 |
+| 播放控制 | 播放/暂停/上一首/下一首、列表·单曲·顺序三种循环、拖拽进度与音量 |
+| 播放队列 | 抽屉式管理，可增删、跳播，插入位置可选顶部/底部 |
+| 收藏与历史 | 可移除/清空，跨会话持久化，每首歌记住上次播放进度 |
+| 分页 | 音乐馆与搜索走服务端分页（每页 30），超长歌单走客户端分页（每页 50） |
+
+### 🔊 声场体验（桌面端专属）
+
+| 功能 | 说明 |
+|---|---|
+| 🎚 实时频谱 | Web Audio `AnalyserNode` 环形频谱 + 波形，无音频时待机动画 |
+| 🎛 图形均衡器 | 10 段 EQ，多套预设（流行/摇滚/人声/古典/低音增强…），真实作用于音频链路 |
+| 🎤 卡拉OK歌词 | LRC 逐行高亮 + 逐字填充 + 当前行缩放，点击任意行跳转播放 |
+| 🖥 桌面歌词 | 独立无边框透明置顶窗口，三色自定义、字号/加粗/对齐可调、可鼠标穿透 |
+| 💤 睡眠定时 | 到点先淡出再暂停，面板内实时倒计时 |
+| 🎨 歌词页背景 | 封面模糊 / 封面主色提取 / 纯净底色三种模式，任意背景下歌词可读 |
+
+### 🧰 桌面级能力
+
+| 功能 | 说明 |
+|---|---|
+| 📂 本地音乐 | 拖入或选择文件/文件夹导入 mp3/flac 等，与在线曲库共用同一套播放器与声场 |
+| ⬇️ 下载 | 曲目行与歌词页一键下载，命名规则与目录可配置 |
+| 🪟 迷你模式 | 自定义标题栏 + 真实缩放置顶；系统托盘常驻 |
+| ⌨️ 全局媒体键 | `MediaPlayPause` 等媒体键 + 托盘播放控制 |
+| 🧭 系统媒体会话 | Windows/macOS 媒体面板显示曲目信息，任务栏图标实时显示播放进度 |
+| 🌐 三语言界面 | 简体中文 / 繁體中文 / English，切换即时生效 |
+| 🎭 4 套强调色 | 信号琥珀 / 霓虹紫 / 电子青 / 玫红，全站色彩由 CSS `color-mix` 派生，切换无死角 |
+| 🪶 性能友好 | 6 档字号、4 档窗口尺寸、动画可关（低性能设备更流畅） |
+
+### 🛡 可靠性细节
+
+- **封面永不破图**：封面与音频同走同源代理，加载失败自动回退「渐变封面 + 音符图标」，专辑封面缺失时回退艺人图；
+- **播放失败说人话**：汇总每个音源的尝试结果（`已尝试 N 个音源均失败：音源名（原因）…`），技术错误码翻译成可读文案；
+- **模式徽标不撒谎**：启动即查运行模式并持续轮询，NCM 子进程冷启动再慢也不会误报「离线」；
+- **播放时阻止系统休眠**；播放错误自动切下一首；启动自动续播上次歌曲与进度。
+
+---
+
+## 🚀 快速开始
+
+### 方式一：下载安装包（推荐）
+
+前往 [**Releases**](https://github.com/kedamano/Lonely-Guy-Music/releases) 下载 `GumanMusic-x.y.z-x64.exe`（Windows，NSIS 安装器）。
+
+> 安装包未做代码签名，首次运行时 SmartScreen 可能提示——点击「更多信息 → 仍要运行」即可。
+
+### 方式二：从源码运行
 
 ```bash
-npm install          # 安装 electron / express / NeteaseCloudMusicApi
-npm start            # 启动（默认启用在线网易云曲库）
+git clone https://github.com/kedamano/Lonely-Guy-Music.git
+cd Lonely-Guy-Music
+npm install
+npm start
 ```
 
-- 默认 `npm start` 会拉起本地网易云 API（端口 3001）并托管 UI（端口 3000）。
-- 若网易云 API 暂不可达，自动降级为**内置示例曲库**（离线也能跑通完整交互，音频用公开示例曲流）。
-- 纯后端调试（浏览器访问 UI）：`ENABLE_NCM=0 npm run server` 然后打开 `http://localhost:3000/`。
-- 纯离线示例模式：`ENABLE_NCM=0 npm start`。
+- 默认 `npm start` 拉起本地网易云 API（动态端口）并托管 UI，启动后即为**在线模式**；
+- 若网易云 API 不可达，自动降级为**内置示例曲库**（离线也能完整体验所有交互）；
+- 纯离线示例模式：`ENABLE_NCM=0 npm start`；
+- 纯后端调试（浏览器访问 UI）：`ENABLE_NCM=0 npm run server`，打开 `http://localhost:3000`。
 
-> 在线曲库依赖第三方非官方网易云接口，仅供学习研究；请遵守相关平台服务条款，勿用于商业或侵权用途。
+### 从源码打包
 
-### 安装音源（以你提供的文件为例）
-
-1. 启动后进入左侧 **设置 → 自定义源管理**；
-2. 点 **导入本地 .js**，选择 `D:\下载\` 下的音源文件（如 `统一音乐源.js`、`星海音乐源_v2.3.15.js`）；
-3. 或粘贴音源脚本 URL 点 **从 URL 安装**（参考 [星河音源指南](https://yinghezhinan.com/lxmusic-yinyuan/) 的在线索引）；
-4. 启用后播放任意搜索结果，即会优先走音源取链；播放条正常出声且声场面板有频谱即为生效。
-
-> 音源上游由第三方维护，可能失效（如 HUIBQ 音源的 `lxmusicapi.onrender.com` 已被 Render 暂停）。运行时会自动跳过失败音源并尝试下一个，全部失败才降级网易云官方接口。
+```bash
+npm run dist        # 产出 NSIS 安装包到 dist/
+npm run dist:dir    # 仅产出免安装目录
+```
 
 ---
 
-## 🧱 架构
+## 🖼 界面一览
+
+| 主界面 + 声场面板 | 卡拉OK歌词（封面主色背景） |
+|:---:|:---:|
+| ![声场面板](docs/screenshots/soundstage.png) | ![卡拉OK歌词](docs/screenshots/lyrics-karaoke.png) |
+
+| 实时搜索 | 洛雪自定义源管理 |
+|:---:|:---:|
+| ![搜索](docs/screenshots/search.png) | ![音源管理](docs/screenshots/sources.png) |
+
+---
+
+## 🎮 全局快捷键
+
+| 按键 | 功能 | 按键 | 功能 |
+|---|---|---|---|
+| <kbd>空格</kbd> | 播放 / 暂停 | <kbd>/</kbd> | 跳转并聚焦搜索 |
+| <kbd>←</kbd> / <kbd>→</kbd> | 快退 / 快进 5 秒 | <kbd>L</kbd> | 打开歌词浮层 |
+| <kbd>↑</kbd> / <kbd>↓</kbd> | 音量 ±5% | <kbd>M</kbd> | 迷你模式 |
+| <kbd>Q</kbd> | 播放队列 | <kbd>Esc</kbd> | 关闭浮层 / 队列 / 迷你模式 |
+| 媒体键 | 播放/暂停·上一首·下一首 | 托盘菜单 | 播放控制 |
+
+---
+
+## 🧱 架构设计
+
+```mermaid
+flowchart LR
+    subgraph Electron["Electron 应用"]
+        MAIN["main.js<br/>主进程<br/>窗口 / 托盘 / 媒体键 / IPC / 自动更新"]
+        PRE["preload.js<br/>contextBridge 安全桥"]
+        RENDER["renderer/<br/>ES Modules 渲染层<br/>store · player · ui · settings · i18n"]
+        LYRIC["lyric-window.html<br/>桌面歌词窗口"]
+        MAIN <-->|IPC| PRE --> RENDER
+        RENDER -.-> LYRIC
+    end
+
+    subgraph HostServer["Express 主机服务（同进程，127.0.0.1）"]
+        UI["静态托管 renderer/"]
+        API["/api/* 反代网易云"]
+        PROXY["/api/proxy<br/>同源音频/封面代理"]
+        SOURCES["source-manager.js<br/>洛雪音源运行时（vm 沙箱）"]
+    end
+
+    NCM["NeteaseCloudMusicApi<br/>子进程（动态端口）"]
+    NET["互联网音源接口<br/>kw / kg / tx / wy / mg / qs"]
+
+    RENDER -->|同源 /api| HostServer
+    HostServer --> NCM
+    SOURCES --> NET
+    PROXY -->|同源流| RENDER
+```
+
+**三个关键设计决策：**
+
+1. **单源架构，免 CORS** —— 后端同时托管 UI 与 `/api`，渲染层只访问同源接口，Electron `webSecurity` 可以保持开启；
+2. **同源音频代理** —— 跨域媒体接入 Web Audio 会被静音（tainted），`/api/proxy` 把远程音频转发为同源流，均衡器与频谱才能真实生效；
+3. **音源脚本沙箱** —— 音源脚本来自互联网，在 `vm.runInNewContext` 中执行：只暴露标准 JS 全局 + `lx` API，不提供 `require`/`fs`，HTTP 一律经后端转发。
+
+<details>
+<summary><b>📁 项目结构</b>（点击展开）</summary>
 
 ```
-main.js               Electron 主进程：窗口/托盘/媒体键/IPC，并同进程拉起后端
-preload.js            安全暴露主进程能力给渲染层
-assets/icon.js        自包含图标生成（zlib 编码 PNG/ICO，无需二进制资源）
+main.js               Electron 主进程：窗口/托盘/媒体键/IPC/日志兜底/自动更新
+preload.js            contextBridge 安全暴露能力（contextIsolation，无 nodeIntegration）
+main-log.js           日志落盘与轮转（userData/logs/guman.log，2MB 轮转）
 server/
   index.js            主机后端：托管 UI + /api 反代或离线 mock + 音源 API + 同源音频代理
   mock.js             离线示例数据（与网易云响应结构一致）
   source-manager.js   洛雪音源运行时：vm 沙箱执行音源脚本、lx API 实现、URL/歌词/封面解析
+  account.js          账号能力
+  library.js          本地曲库
+  translate.js        歌词翻译
 renderer/
   index.html          结构（SVG 图标系统 / 标题栏 / 侧边栏 / 主视图 / 声场面板 / 播放条 / 队列抽屉 / 歌词浮层）
   lyric-window.html   桌面歌词独立窗口（透明无边框置顶）
-  styles.css          设计系统（暗夜声场方向，含响应式与迷你模式）
+  styles.css          设计系统（暗夜声场主题，含响应式与迷你模式）
+  assets/fonts/       自托管字体（@fontsource 子集，113 个 woff2，无外网依赖）
   js/
-    store.js          状态与持久化（设置/收藏/历史/搜索历史/本地库/队列/音质/播放进度）
+    store.js          状态与持久化（设置/收藏/历史/本地库/队列/播放进度）
     api.js            API 客户端（超时、曲目归一化、音源可用性缓存）
     i18n.js           三语言运行时（字典 + 模板 + 动态句正则匹配）
     lyrics.js         LRC 解析与逐行定位（含卡拉OK逐字时长）
     visualizer.js     实时频谱（环形频谱 + 波形，含待机动画）
     player.js         播放引擎（Web Audio：队列/EQ/分析/睡眠淡出/音源取链/媒体会话）
-    ui.js             DOM/图标/封面/空态/歌单与曲目列表/分页器组件
-    settings.js       设置页：基本/播放/播放详情页/桌面歌词/列表/下载/网络代理/自定义源管理/快捷键/关于
+    ui.js             DOM/图标/封面/空态/列表/分页器组件
+    settings.js       设置页（10 个分区）
     app.js            编排层：路由/视图/搜索/队列/播放控制/快捷键/设置分发
+assets/icon.js        自包含图标生成（zlib 编码 PNG/ICO，无需二进制资源）
 scripts/
-  ui-check.js         Playwright UI 回归检查（29 项 + 截图）
-  ui-smoke.js         全量按钮冒烟测试（60+ 项，含可见性/封面加载/分页/设置断言）
+  build-fonts.js      字体子集构建
+  ui-check.js         Playwright UI 回归（29 项 + 截图）
+  ui-smoke.js         全量按钮冒烟（65 项）
+  proxy-check.js      代理机制单测（12 项）
 ```
 
-**为什么单源架构**：后端同时托管 UI 与 `/api`，渲染层只访问同源 `/api/*` —— 免 CORS、Electron `webSecurity` 可保持开启。
-**为什么需要音频代理**：跨域媒体一旦接入 Web Audio 会被静音（tainted）。`/api/proxy` 把远程音频转发为同源流，均衡器与可视化才能生效。
-**音源沙箱**：音源脚本来自互联网，在 `vm.runInNewContext` 中执行，只暴露标准 JS 全局 + `lx` API；不提供 `require`/`fs`，HTTP 一律走后端转发。
+</details>
 
-### 播放体验与可靠性设计
+---
 
-- **封面加载**：封面与音频同走 `/api/proxy` 同源代理（自动带网易云 Referer）。`background-image` 无法感知加载失败，因此用隐藏 `<img>` 探测器：失败即回退到「按曲目生成的渐变封面 + 音符图标」，永不破图；专辑封面缺失时自动回退艺人图。
-- **播放失败提示**：取链失败时汇总每个音源的尝试结果（`已尝试 N 个音源均失败：音源名（原因）…`），toast 红色描边、允许换行、展示 6.5s，同时播放条标题变红；浏览器技术错误码（如 `no supported source`）会翻译成「音频地址无效或格式不支持（音源可能已失效）」等人话。
-- **模式徽标**：启动即查一次 `/api/__mode`，之后每 3s 轮询——NCM 子进程起步慢（音源初始化争抢时可能超过 90s）也不会让徽标卡在"离线示例"；服务端探测为持久轮询，上线即切。
-- **歌词页背景**（设置 → 歌词页背景，即时生效）：
-  - `封面模糊`（默认）：当前歌曲封面大图模糊作背景；
-  - `封面主色`：从封面提取主色调（canvas 同源读取，灰度兜底提艳）生成氛围渐变；
-  - `应用背景`：纯净的应用底色，对比度最高。
-  - 三种模式下歌词行均带文字阴影，保证任何背景都可读。
-- **主题化**：所有氛围光/高亮色均通过 `color-mix(in srgb, var(--accent) N%, transparent)` 派生，切换强调色（琥珀/霓虹紫/电子青/玫红）时全站一致，无写死颜色。
+## 🎼 洛雪音源系统
 
-### 音源 API（供二次开发）
+完整兼容 [LX Music 自定义源脚本](https://lxmusic.toside.cn/desktop/custom-source)（`globalThis.lx` 事件模型：`inited` / `request` / `updateAlert`）：
+
+- **沙箱执行**：音源脚本运行在 Node `vm` 沙箱，提供 `lx.request`（HTTP 全功能：headers/body/form/formData/timeout/重定向）与 `lx.utils`（buffer/crypto/zlib）；
+- **全平台支持**：酷我(kw) / 酷狗(kg) / QQ(tx) / 网易(wy) / 咪咕(mg) / 汽水(qs)；
+- **音质回退**：默认音质可选 FLAC 24bit / FLAC / 320K / 192K / 128K，取不到自动向下回退；
+- **多源容错**：按启用顺序逐个尝试取链，失败自动跳到下一个；全部失败才降级网易云官方接口，并在 toast 中汇总每个音源的失败原因；
+- **来源管理**：设置 → 自定义源管理，支持导入本地 `.js` / 从 URL 安装 / 启用禁用 / 删除；
+- **网络代理可控**：音源请求**默认直连，不读取系统代理环境变量**（避免本机失效代理拖垮全部音源）；需要时在「设置 → 网络代理」填写，保存即生效。
+
+<details>
+<summary><b>🔌 音源 HTTP API</b>（供二次开发，点击展开）</summary>
 
 | 方法 | 说明 |
 |---|---|
@@ -127,50 +253,97 @@ scripts/
 | `POST /api/sources/toggle` | 启用/禁用 `{ id, enabled }` |
 | `POST /api/sources/remove` | 删除音源 `{ id }` |
 | `POST /api/sources/quality` | 设置默认音质 `{ quality }` |
-| `POST /api/sources/proxy` | 设置网络代理 `{ proxy }`，留空 = 不使用代理 |
+| `POST /api/sources/proxy` | 设置网络代理 `{ proxy }`，留空 = 恢复直连 |
 | `POST /api/sources/resolve` | 取播放链 `{ sourcePlatform, musicInfo, quality?, sourceId? }` |
 | `POST /api/sources/action` | 通用动作 `{ action: 'musicUrl'/'lyric'/'pic', ... }` |
 
-**网络代理**：音源的网络请求**默认直连，不读取系统代理环境变量**（避免本机失效代理如未运行的 `127.0.0.1:7890` 拖垮全部音源）。仅当你的网络必须经代理才能访问音源接口时，在 **设置 → 网络代理** 填写（如 `http://127.0.0.1:7890`），保存后立即生效、无需重启；留空保存即恢复直连。配置持久化于 `userData/sources.json`。
+</details>
 
 ---
 
-## ⌨️ 快捷键
+## 🧪 UI 回归测试
 
-| 按键 | 功能 |
-|---|---|
-| 空格 | 播放 / 暂停 |
-| ← / → | 快退 / 快进 5 秒 |
-| ↑ / ↓ | 音量 ±5% |
-| L | 打开歌词浮层 |
-| M | 迷你模式 |
-| Q | 播放队列 |
-| / | 跳转并聚焦搜索 |
-| Esc | 关闭浮层 / 队列 / 迷你模式 / 声场 |
-| 媒体键 | 播放/暂停·上一首·下一首 |
-
----
-
-## 🧪 UI 回归检查
-
-启动服务后运行（默认 `http://localhost:3000`，可用 `BASE_URL` 指定其他端口）：
+基于 Playwright 的真实交互回归（共 **96 项断言**）：
 
 ```bash
-npm start                       # 或 ENABLE_NCM=0 node server/index.js
-node scripts/ui-check.js        # 29 项交互检查 + screenshots/ui 截图
-node scripts/ui-smoke.js        # 60+ 项全量冒烟（封面加载/分页/设置/语言切换…）
+npm start                        # 或 ENABLE_NCM=0 node server/index.js
+node scripts/ui-check.js         # 29 项交互检查 + 截图
+node scripts/ui-smoke.js         # 65 项全量冒烟（封面加载/分页/设置/语言切换…）
+node scripts/proxy-check.js      # 12 项代理机制单测
 ```
 
-`scripts/ui-check.js` 会实际走一遍：实时搜索 / 切 tab / 播放 / 拖拽进度 / 收藏 / 加队列 / 队列抽屉 / 歌词浮层 / 歌单详情 / 声场 EQ 与睡眠 / 我的 / 设置 / 本地音频导入播放 / 迷你窗口 / 响应式布局，并检查运行时 console 错误。截图输出到 `scripts/shots/`。
-
-`scripts/ui-smoke.js` 覆盖：模式徽标、发现页封面真实加载（非渐变占位）、全路由导航、音乐馆分类与翻页、搜索分页、播放链路、播放条全部按钮、声场面板、迷你模式、快捷电台、设置页全部分区（语言切换/字体/动画/下载/来源标签/桌面歌词/代理/歌词背景/音源开关）、歌单详情与播放全部。
+覆盖范围：实时搜索 / 切 tab / 播放 / 拖拽进度 / 收藏 / 队列 / 歌词浮层 / 声场 EQ 与睡眠 / 本地音频导入播放 / 迷你模式 / 响应式布局 / 全部设置分区 / 封面真实加载断言 / 运行时 console 错误检查。截图输出到 `scripts/shots/`。
 
 ---
 
-## 📌 已知限制
+## 🗺 路线图
 
-- 网易云部分 VIP 曲目 `/song/url` 可能返回空地址；此时会提示无法播放，可换曲或切到本地音乐。
-- 音源脚本上游可用性由第三方决定，失效音源会被自动跳过（见上方说明）。
-- 搜索目前使用网易云元数据，因此播放链路默认走 `wy` 平台；若音源仅支持其他平台，暂无法直接使用（后续可扩展多平台搜索）。
-- 本地音乐导入为会话级（objectURL 无法跨刷新持久化），收藏/历史为跨会话持久化。
-- 在线模式需联网；离线示例曲库音频为公开示例曲，仅用于演示交互。
+- [ ] 多平台搜索：跳出网易云元数据，直接按音源平台搜索
+- [ ] 歌单云同步 / 账号登录完善
+- [ ] macOS / Linux 安装包
+- [ ] 音效链扩展（空间音频 / 音频场景预设）
+- [ ] 自动更新完整闭环（`electron-updater` 已接入）
+
+---
+
+## ❓ FAQ
+
+<details>
+<summary><b>为什么有的歌放不出来？</b></summary>
+
+网易云部分 VIP 曲目 `/song/url` 返回空地址；导入音源后绝大多数歌曲可经音源取链播放。全部音源失败时会提示每个音源的原因。
+</details>
+
+<details>
+<summary><b>音源失效了怎么办？</b></summary>
+
+音源上游由第三方维护，可能失效。应用会自动跳过失败音源尝试下一个；你也可以在「设置 → 自定义源管理」停用失效源、换用新源。
+</details>
+
+<details>
+<summary><b>为什么装完打不开 / SmartScreen 拦截？</b></summary>
+
+安装包未做代码签名。SmartScreen 提示时点击「更多信息 → 仍要运行」即可。
+</details>
+
+<details>
+<summary><b>需要代理吗？</b></summary>
+
+默认直连，且**不读取系统代理环境变量**（防止本机失效代理拖垮音源加载）。如果你的网络必须经代理访问音源接口，在「设置 → 网络代理」填写即可，保存即生效。
+</details>
+
+<details>
+<summary><b>本地音乐重启后还在吗？</b></summary>
+
+收藏、播放历史、搜索历史、设置均跨会话持久化；本地音乐导入目前为会话级（浏览器 objectURL 限制），重启后需重新导入。
+</details>
+
+---
+
+## 🤝 参与贡献
+
+欢迎 Issue 与 PR：
+
+1. Fork → 新建分支（`feat/xxx`）→ 提交；
+2. UI 改动请附 `node scripts/ui-smoke.js` 通过的说明或截图；
+3. 涉及音源的改动请勿提交任何音源脚本本身（见下方免责声明）。
+
+---
+
+## ⚠️ 免责声明
+
+- 本项目的**在线曲库能力依赖第三方非官方网易云接口**，仅供学习研究；请遵守相关平台服务条款，勿用于商业或侵权用途；
+- 本项目**不分发、不内置任何音源脚本**；音源由用户自行导入，其可用性与内容由第三方维护，与本项目无关；
+- 音乐版权归原作者所有，请支持正版。
+
+## 📄 开源许可
+
+[MIT](LICENSE) © 孤男音乐
+
+字体资源（Anton / IBM Plex Sans / IBM Plex Mono / Noto Sans SC）经 [@fontsource](https://fontsource.org/) 自托管，遵循各自的开源许可，详见 [NOTICE.txt](renderer/assets/fonts/NOTICE.txt)。
+
+<div align="center">
+
+**如果这个项目对你有帮助，欢迎点一个 ⭐ Star**
+
+</div>

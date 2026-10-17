@@ -61,14 +61,15 @@ app.use((req, res, next) => {
   next();
 });
 
-// 第三方音源脚本内部的异步缺陷（如未 catch 的 Promise）不应污染终端/拖垮进程：
-// 统一收敛为一行提示，应用继续运行。设 GUMAN_DEBUG=1 可看完整堆栈。
+// 未处理的 Promise 拒绝统一收敛为一行提示，不因一处缺陷拖垮进程。
+// 注意措辞保持中性：这里也会收到主进程自身的缺陷，标注成"音源脚本错误"会误导排障
+// （曾有真实的主进程 API 误用被这里吞成音源报错）。设 GUMAN_DEBUG=1 看完整堆栈。
 process.on('unhandledRejection', (reason) => {
-  const msg = reason instanceof Error ? `${reason.message}` : String(reason);
+  const msg = reason instanceof Error ? reason.message : String(reason);
   if (process.env.GUMAN_DEBUG === '1') {
     console.warn('[unhandled]', reason);
   } else {
-    console.warn(`[source] 音源脚本异步错误（已忽略，不影响使用）: ${msg}`);
+    console.warn(`[unhandled] 未处理的异步错误（已忽略，不影响使用）: ${msg}`);
   }
 });
 
@@ -413,21 +414,37 @@ let ncmRestarts = 0;
 function startNetease(port) {
   const appJs = resolveNcmAppJs();
   const child = spawn(process.execPath, [appJs], {
-    env: { ...process.env, PORT: String(port) },
+    // 关键：打包后 process.execPath 是应用自身的 exe，不加 ELECTRON_RUN_AS_NODE
+    // 它会被当成 Electron 应用启动（弹窗/报错），而不是执行 Node 脚本。
+    env: { ...process.env, PORT: String(port), ELECTRON_RUN_AS_NODE: '1' },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
-  child.stdout?.on('data', () => {});
-  child.stderr?.on('data', (d) => process.stderr.write(`[ncm] ${d}`));
-  child.on('exit', (code) => {
-    if (code) {
-      console.log(`[ncm] exited with ${code}`);
-      if (ENABLE_NCM && ncmRestarts < 3) {
-        ncmRestarts++;
-        console.log(`[ncm] 尝试重启（第 ${ncmRestarts} 次）`);
-        setTimeout(() => startNetease(port), 1500);
-      } else {
-        console.log('[ncm] 多次启动失败，保持离线模式（内置示例曲库）');
+  // 子进程日志走 console：Electron 下已被 hook 到 userData/logs/guman.log，
+  // 纯 node 调试模式下则照常打到终端（打包后子进程控制台不可见，排障全靠日志）。
+  const pipe = (buf, level) => {
+    const s = String(buf).trim();
+    if (!s) return;
+    if (level === 'error') console.warn(`[ncm] ${s}`);
+    else console.log(`[ncm] ${s}`);
+  };
+  child.stdout?.on('data', (d) => pipe(d, 'info'));
+  child.stderr?.on('data', (d) => pipe(d, 'error'));
+  child.on('exit', async (code) => {
+    if (!code) return;
+    console.log(`[ncm] exited with ${code}`);
+    if (ENABLE_NCM && ncmRestarts < 3) {
+      ncmRestarts++;
+      // 换一个新端口再试：最常见的失败原因就是端口被抢，原地重启只会反复失败
+      const next = await pickFreePort(ncmPort + 1);
+      if (next !== ncmPort) {
+        ncmPort = next;
+        ncmUrl = `http://127.0.0.1:${ncmPort}`;
+        account.init({ dataDir: DATA_DIR, ncmUrl });
       }
+      console.log(`[ncm] 尝试重启（第 ${ncmRestarts} 次，端口 ${ncmPort}）`);
+      setTimeout(() => startNetease(ncmPort), 1500);
+    } else {
+      console.log('[ncm] 多次启动失败，保持离线模式（内置示例曲库）');
     }
   });
   return child;
@@ -466,11 +483,13 @@ async function pickFreePort(start, tries = 20) {
 // ---- 在线探测：可达即置 online（持久后台轮询）----
 // 音源初始化与子进程启动可能争抢资源，NCM 起步慢时首次窗口（约 90s）内探不到；
 // 因此窗口过后转入 5s 低频轮询，一旦可达立即切在线（UI 每 3s 轮询徽标）。
-async function probe(url) {
+async function probe() {
   let announcedOffline = false;
   for (let i = 0; ; i++) {
+    // 每轮都读最新的 ncmUrl：子进程重启到新端口后探测也要跟上
+    if (!ncmUrl) { await new Promise((r) => setTimeout(r, 300)); continue; }
     try {
-      const r = await fetch(`${url}/personalized`, { signal: AbortSignal.timeout(1200) });
+      const r = await fetch(`${ncmUrl}/personalized`, { signal: AbortSignal.timeout(1200) });
       if (r.ok) {
         if (!online) console.log('[api] 在线模式：已连接到网易云 API');
         online = true;
@@ -507,7 +526,7 @@ const ready = new Promise((resolve, reject) => {
       console.log(`[host] 孤男音乐 后端已启动: http://127.0.0.1:${actualPort}（网易云 API 端口 ${ncmPort}）`);
       if (ENABLE_NCM) {
         startNetease(ncmPort);
-        probe(ncmUrl);
+        probe();
       } else {
         console.log('[api] 离线模式：内置示例曲库（设置 ENABLE_NCM=1 启用网易云在线曲库）');
       }

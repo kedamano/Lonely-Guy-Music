@@ -22,6 +22,10 @@ let lyricWindow = null;      // 桌面歌词窗口
 let powerBlockerId = null;   // 电源阻止句柄
 let hostServer = null;       // 同进程后端（server/index.js），getPort() 取实际端口
 
+// 传给每个窗口 preload 的元数据（preload 环境没有 app 模块，
+// 读 app.isPackaged/app.getVersion 会让 preload 整体崩掉、window.gm 消失）
+const gumanMetaArgs = () => [`--guman-meta=v${app.getVersion()}|${app.isPackaged ? '0' : '1'}`];
+
 // 窗口尺寸预设（与设置页 → 基本设置 → 窗口尺寸 对应）
 const WINDOW_SIZES = {
   sm: { width: 1000, height: 680 },
@@ -31,7 +35,7 @@ const WINDOW_SIZES = {
 };
 
 // ---- 单实例锁（必须在启动后端之前）----
-// 若已有实例在跑（含托盘驻留），直接退出：不抢占 3000 端口、不争抢 Chromium 缓存
+// 若已有实例在跑（含托盘驻留），直接退出：不重复拉起后端、不争抢 Chromium 缓存
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
@@ -112,6 +116,7 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
+      additionalArguments: gumanMetaArgs(),
     },
   });
 
@@ -127,6 +132,10 @@ function createWindow() {
     mainLog.error('render-process-gone:', JSON.stringify(details));
   });
   mainWindow.on('unresponsive', () => mainLog.warn('主窗口无响应'));
+  // 渲染层 console 错误落盘：打包后用户侧前端异常的唯一诊断来源
+  mainWindow.webContents.on('console-message', (_e, level, message, line, source) => {
+    if (level >= 3) mainLog.error(`[renderer] ${source}:${line} ${message}`);
+  });
 
   // 页面内 target=_blank / window.open 一律交给系统浏览器
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -292,34 +301,59 @@ function ensureAgreement() {
   return new Promise((resolve) => {
     try { if (fs.existsSync(AGREEMENT_FILE)) return resolve(true); } catch (_) { /* ignore */ }
     agreementResolver = resolve;
-    agreementWindow = new BrowserWindow({
-      width: 620,
-      height: 660,
-      resizable: false,
-      minimizable: false,
-      maximizable: false,
-      title: '使用声明',
-      icon: nativeImage.createFromBuffer(iconMod.getIconBuffers().ico),
-      backgroundColor: '#0e0d0b',
-      webPreferences: {
-        preload: path.join(__dirname, 'preload.js'),
-        contextIsolation: true,
-        nodeIntegration: false,
-        sandbox: false,
-      },
-    });
-    agreementWindow.setMenuBarVisible(false);
-    agreementWindow.loadFile(path.join(__dirname, 'renderer/agreement.html'));
-    agreementWindow.on('closed', () => {
-      const r = agreementResolver;
+    try {
+      agreementWindow = new BrowserWindow({
+        width: 620,
+        height: 660,
+        resizable: false,
+        minimizable: false,
+        maximizable: false,
+        title: '使用声明',
+        icon: nativeImage.createFromBuffer(iconMod.getIconBuffers().ico),
+        backgroundColor: '#0e0d0b',
+        // 隐藏菜单栏（设置项而非方法调用：Electron 新版本已移除 setMenuBarVisible）
+        autoHideMenuBar: true,
+        webPreferences: {
+          preload: path.join(__dirname, 'preload.js'),
+          contextIsolation: true,
+          nodeIntegration: false,
+          sandbox: false,
+          additionalArguments: gumanMetaArgs(),
+        },
+      });
+      agreementWindow.loadFile(path.join(__dirname, 'renderer/agreement.html'));
+      // 兜底决策通道：页面 preload 失效时用 hash 导航传递决定（见 agreement.html decide()）
+      agreementWindow.webContents.on('did-navigate-in-page', (_e, url) => {
+        if (/agreement\.html#agree$/.test(url)) agreementDecide(true);
+        else if (/agreement\.html#decline$/.test(url)) agreementDecide(false);
+      });
+      // 渲染进程报错落盘：打包后用户侧协议窗异常的唯一诊断来源
+      agreementWindow.webContents.on('console-message', (_e, level, message, line, source) => {
+        if (level >= 2) mainLog.warn(`[agreement] ${source}:${line} ${message}`);
+      });
+      agreementWindow.on('closed', () => {
+        const r = agreementResolver;
+        agreementResolver = null;
+        agreementWindow = null;
+        if (r) r(false);
+      });
+    } catch (e) {
+      // 协议窗建不起来也不能挡住主程序：记录后放行
+      mainLog.error('[agreement] 创建协议窗失败，跳过:', e);
       agreementResolver = null;
       agreementWindow = null;
-      if (r) r(false);
-    });
+      resolve(true);
+    }
   });
 }
 
-ipcMain.handle('agreement:decide', async (_e, ok) => {
+ipcMain.handle('agreement:decide', (_e, ok) => {
+  agreementDecide(!!ok);
+  return true;
+});
+
+// 统一的协议决策出口（IPC 与 hash 兜底通道都汇到这里；只生效一次）
+function agreementDecide(ok) {
   if (ok) {
     try { fs.writeFileSync(AGREEMENT_FILE, new Date().toISOString()); } catch (e) { mainLog.warn('写入协议标记失败:', e.message); }
   }
@@ -327,8 +361,7 @@ ipcMain.handle('agreement:decide', async (_e, ok) => {
   agreementResolver = null;
   if (agreementWindow && !agreementWindow.isDestroyed()) agreementWindow.close();
   if (r) r(!!ok);
-  return true;
-});
+}
 
 // 打开日志目录（设置页 → 关于）
 ipcMain.handle('shell:openLogDir', async () => {
@@ -393,6 +426,7 @@ function createLyricWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
+      additionalArguments: gumanMetaArgs(),
     },
   });
   lyricWindow.loadURL(`http://127.0.0.1:${hostServer.getPort()}/lyric-window.html`);

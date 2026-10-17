@@ -96,8 +96,35 @@
     <button id="accept" class="primary">同意并继续</button>
   </div>
   <script>
-    document.getElementById('accept').addEventListener('click', () => window.gm.agree(true));
-    document.getElementById('decline').addEventListener('click', () => window.gm.agree(false));
+    // 决定同意与否：优先走 preload 暴露的 IPC；若 preload 未生效（打包环境异常），
+    // 退化为 hash 导航 —— 主进程监听 did-navigate-in-page，同样能收到决定。
+    // 这样任何一层失效都不会出现"按钮点了没反应"的死局。
+    function decide(ok) {
+      try {
+        if (window.gm && typeof window.gm.agree === 'function') {
+          window.gm.agree(ok);
+          return;
+        }
+      } catch (e) { /* 落到 hash 兜底 */ }
+      // 兜底通道：主进程通过 did-navigate-in-page 捕获
+      location.hash = ok ? 'agree' : 'decline';
+    }
+    document.getElementById('accept').addEventListener('click', () => decide(true));
+    document.getElementById('decline').addEventListener('click', () => decide(false));
+    // preload 异常时给出可见提示，而不是默默无响应
+    window.addEventListener('error', () => {
+      const tip = document.getElementById('bridge-tip');
+      if (tip && !window.gm) tip.style.display = 'block';
+    });
+    setTimeout(() => {
+      if (!window.gm) {
+        const tip = document.getElementById('bridge-tip');
+        if (tip) tip.style.display = 'block';
+      }
+    }, 1500);
   </script>
+  <div id="bridge-tip" style="display:none; padding: 10px 28px 16px; color: #ffb08c; font-size: 12px;">
+    与主程序的通信通道异常，仍可点击上方按钮继续；若无效请重启应用。
+  </div>
 </body>
 </html>

@@ -4,16 +4,20 @@
  * 渲染层通过 window.gm 调用窗口控制、外链打开、接收托盘/媒体键指令，
  * 以及电源阻止、任务栏进度、下载保存、桌面歌词窗口等系统能力。
  */
-const { contextBridge, ipcRenderer, webUtils, app } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
-// 开发模式：未打包（npm start）或显式 GUMAN_DEBUG=1。生产打包后为 false，
-// 渲染层据此隐藏 window.__guman 调试钩子。
-const devMode = !app.isPackaged || process.env.GUMAN_DEBUG === '1';
+// 版本与运行模式由主进程经 additionalArguments 传入（<版本>|<是否开发>）。
+// 注意：preload 环境没有 app 模块 —— 曾经在这里读 app.isPackaged 导致 preload
+// 整体抛错、window.gm 消失，打包版所有系统能力（含协议窗按钮）全部失灵。
+const metaRaw = (process.argv || []).find((a) => String(a).startsWith('--guman-meta='));
+const [metaVersion, metaDev] = metaRaw ? metaRaw.slice('--guman-meta='.length).split('|') : [];
+// 未传参时退回 process.defaultApp（仅 electron . 开发模式为 true）
+const devMode = (metaDev != null ? metaDev === '1' : !!process.defaultApp) || process.env.GUMAN_DEBUG === '1';
 
 contextBridge.exposeInMainWorld('gm', {
   platform: process.platform,
   // 版本信息（package.json 单一来源）+ 运行模式
-  appVersion: app.getVersion(),
+  appVersion: metaVersion || 'dev',
   electronVersion: process.versions.electron,
   devMode,
   minimize: () => ipcRenderer.send('window:minimize'),
