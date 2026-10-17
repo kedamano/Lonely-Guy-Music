@@ -2,6 +2,7 @@
 //         下载设置 / 网络代理 / 自定义源管理 / 快捷键 / 关于
 import { api } from './api.js';
 import { store } from './store.js';
+import { FX_SCENES } from './player.js';
 import { applyLang, currentLang } from './i18n.js';
 import { el, heading, icon, toast as uiToast, emptyState } from './ui.js';
 
@@ -100,7 +101,88 @@ export class SettingsView {
 
   refreshLang() { applyLang(currentLang()); }
 
-  /* ---------- 构建辅助 ---------- */
+  // ---------- 音效：场景预设 + 空间宽度 / 混响强度 ----------
+  fxRow(sec) {
+    const sceneOf = () => store.get('fxScene') || 'off';
+    const cards = {};
+    const paint = () => {
+      Object.entries(cards).forEach(([k, c]) => c.classList.toggle('is-active', k === sceneOf()));
+    };
+
+    const grid = el('div', { class: 'fx-grid' });
+    Object.entries(FX_SCENES).forEach(([key, s]) => {
+      const card = el('button', { type: 'button', class: 'fx-card', 'data-fx': key }, [
+        el('span', { class: 'fx-card__name', text: s.label }),
+        el('span', { class: 'fx-card__desc', text: s.desc }),
+      ]);
+      card.addEventListener('click', () => {
+        store.set({ fxScene: key, fxWidth: null, fxReverb: null });
+        paint();
+        syncW(); syncR();
+        window.dispatchEvent(new CustomEvent('guman:setting', { detail: { key: 'fxScene', value: key } }));
+        this.onToast(`音效场景：${s.label}`);
+      });
+      cards[key] = card;
+      grid.appendChild(card);
+    });
+    sec.appendChild(grid);
+
+    const mkSlider = ({ key, label, min, max, step, fmt, hint }) => {
+      const input = el('input', { type: 'range', min, max, step, 'aria-label': label });
+      const val = el('span', { class: 'fx-slider__val' });
+      const read = () => {
+        const scene = FX_SCENES[sceneOf()] || FX_SCENES.off;
+        const raw = store.get(key);
+        return raw == null ? (key === 'fxWidth' ? scene.width : scene.wet) : Number(raw);
+      };
+      const sync = () => {
+        const v = read();
+        input.value = String(v);
+        val.textContent = fmt(v);
+      };
+      input.addEventListener('input', () => {
+        const v = Number(input.value);
+        store.set({ [key]: v });
+        val.textContent = fmt(v);
+        window.dispatchEvent(new CustomEvent('guman:setting', { detail: { key, value: v } }));
+      });
+      sec.appendChild(el('div', { class: 'fx-slider' }, [
+        el('div', { class: 'fx-slider__head' }, [
+          el('span', { class: 'settings__item-label', text: label }),
+          val,
+        ]),
+        input,
+        el('div', { class: 'settings__item-desc', text: hint }),
+      ]));
+      return sync;
+    };
+
+    const syncW = mkSlider({
+      key: 'fxWidth', label: '空间宽度', min: '0', max: '2', step: '0.05',
+      fmt: (v) => `${Math.round(v * 100)}%`,
+      hint: '100% 为原始立体声；调高拉宽声场，过高会显得中空。',
+    });
+    const syncR = mkSlider({
+      key: 'fxReverb', label: '混响强度', min: '0', max: '1', step: '0.02',
+      fmt: (v) => `${Math.round(v * 100)}%`,
+      hint: '模拟房间反射；各场景自带不同默认值，可在此微调。',
+    });
+
+    const reset = el('button', { type: 'button', class: 'btn btn--small', text: '恢复场景默认' });
+    reset.addEventListener('click', () => {
+      store.set({ fxWidth: null, fxReverb: null });
+      syncW(); syncR();
+      window.dispatchEvent(new CustomEvent('guman:setting', { detail: { key: 'fxScene', value: sceneOf() } }));
+      this.onToast('已恢复该场景的默认参数');
+    });
+    sec.appendChild(el('div', { class: 'fx-actions' }, [reset]));
+
+    paint();
+    syncW();
+    syncR();
+  }
+
+  // ---------- 构建 ----------
   section(title, desc) {
     const sec = el('section', { class: 'settings__section reveal' });
     if (title) sec.appendChild(el('h2', { class: 'settings__title' }, title));
@@ -246,6 +328,11 @@ export class SettingsView {
     this.toggleRow(play, { key: 'karaokeLyric', label: '使用卡拉OK样式歌词播放', desc: '已播放的歌词逐字高亮' });
     this.toggleRow(play, { key: 'taskbarProgress', label: '在任务栏上显示当前歌曲播放进度', desc: 'Windows 任务栏图标显示播放进度' });
     wrap.appendChild(play);
+
+    /* ---------- 音效（空间音频 / 场景预设） ---------- */
+    const fx = this.section('音效', '空间音频与场景预设直接作用于 Web Audio 音频链，播放中即时生效；与上面的 10 段均衡器叠加使用。');
+    this.fxRow(fx);
+    wrap.appendChild(fx);
 
     /* ---------- 播放详情页设置 ---------- */
     const npSet = this.section('播放详情页设置', '点击播放条封面打开的歌词大页。');

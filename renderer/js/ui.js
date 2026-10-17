@@ -72,6 +72,9 @@ export function trackKey(t) {
   return t.source === 'local' ? String(t.url || t.id) : String(t.id);
 }
 
+// 多平台搜索结果在曲目行上标注来源，避免全部显示成「网易云」
+export const PLATFORM_LABELS = { wy: '网易云', tx: 'QQ 音乐', kg: '酷狗' };
+
 /* ---------------- 封面 ---------------- */
 // 封面统一走同源代理：绕过防盗链/混合内容，与音频同一通道
 export function proxyUrl(url) {
@@ -378,7 +381,11 @@ export function renderTrackList(container, tracks, {
     row.appendChild(el('div', { class: 'track__main' }, [
       el('div', { class: 'track__title' }, [
         document.createTextNode(t.name),
-        showSource ? el('span', { class: 'track__src', text: t.source === 'local' ? '本地' : '网易云' }) : null,
+        showSource ? el('span', {
+          class: 'track__src' + (t.platform && t.platform !== 'wy' ? ' track__src--plat' : ''),
+          'data-plat': t.platform || 'wy',
+          text: t.source === 'local' ? '本地' : (PLATFORM_LABELS[t.platform] || '网易云'),
+        }) : null,
       ]),
       el('div', { class: 'track__artist', text: t.artist || '未知艺人' }),
     ]));

@@ -65,6 +65,82 @@ async function ncm(pathname, params = {}) {
   return j;
 }
 
+/**
+ * 登录类接口不能走 ncm()：400/501/502 这些是「手机号格式错 / 验证码错 / 密码错」的业务码，
+ * 需要在调用方翻译成人话，而不是被统一抛成「接口错误」。
+ */
+async function ncmRaw(pathname, params = {}) {
+  const qs = new URLSearchParams(
+    Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== '')
+      .map(([k, v]) => [k, String(v)]),
+  ).toString();
+  const url = `${NCM}${pathname}${qs ? `?${qs}` : ''}`;
+  const r = await fetch(url, {
+    headers: state.cookie ? { Cookie: state.cookie } : {},
+    signal: AbortSignal.timeout(15000),
+  });
+  const j = await r.json().catch(() => null);
+  if (!j) throw new Error(`网易云接口无响应（${pathname}）`);
+  return j;
+}
+
+// 业务码 → 用户能看懂的原因
+const LOGIN_ERRORS = {
+  400: '手机号格式不正确',
+  501: '验证码错误或已过期',
+  502: '密码错误',
+  503: '该账号不存在',
+  504: '该账号尚未注册',
+  509: '登录过于频繁，请稍后再试',
+  8811: '手机号或密码错误',
+};
+
+/** 登录成功后的统一收尾：存 cookie（只在本机）、刷新资料、返回公开状态 */
+async function applyLogin(j) {
+  const code = Number(j.code || 0);
+  if (code !== 200) {
+    throw new Error(LOGIN_ERRORS[code] || j.message || j.msg || `登录失败（code ${code}）`);
+  }
+  if (!hasCredential(j.cookie)) {
+    throw new Error('登录响应未包含凭证，可能触发了平台风控，请稍后重试或改用扫码登录');
+  }
+  state.cookie = cleanCookie(j.cookie);
+  state.loginAt = Date.now();
+  save();
+  const user = await refreshStatus();
+  return { loggedIn: true, user: user || state.user };
+}
+
+/** 发送手机验证码 */
+async function sendCaptcha(phone) {
+  const p = String(phone || '').trim();
+  if (!/^\d{6,15}$/.test(p)) throw new Error('请输入正确的手机号');
+  const j = await ncmRaw('/captcha/sent', { phone: p, ctcode: '86', timestamp: Date.now() });
+  const code = Number(j.code || 0);
+  if (code !== 200) throw new Error(LOGIN_ERRORS[code] || j.message || j.msg || '验证码发送失败');
+  return { sent: true, phone: p };
+}
+
+/** 手机号 + 验证码登录 */
+async function loginCellphone(phone, captcha) {
+  const p = String(phone || '').trim();
+  const c = String(captcha || '').trim();
+  if (!/^\d{6,15}$/.test(p)) throw new Error('请输入正确的手机号');
+  if (!/^\d{4,8}$/.test(c)) throw new Error('请输入收到的验证码');
+  const j = await ncmRaw('/login/cellphone', { phone: p, captcha: c, countrycode: '86', timestamp: Date.now() });
+  return applyLogin(j);
+}
+
+/** 邮箱 + 密码登录（网易云主站密码） */
+async function loginEmail(email, password) {
+  const e = String(email || '').trim();
+  const pw = String(password || '');
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) throw new Error('请输入正确的邮箱地址');
+  if (pw.length < 6) throw new Error('密码至少 6 位');
+  const j = await ncmRaw('/login', { email: e, password: pw, timestamp: Date.now() });
+  return applyLogin(j);
+}
+
 // MUSIC_U 是登录凭证的标志位；没有它说明拿到的只是匿名 cookie
 function hasCredential(cookie) {
   return /MUSIC_U=[^;]+/.test(String(cookie || ''));
@@ -186,4 +262,7 @@ function publicState() {
   };
 }
 
-module.exports = { init, getCookie, publicState, qrKey, qrCreate, qrCheck, refreshStatus, logout };
+module.exports = {
+  init, getCookie, publicState, qrKey, qrCreate, qrCheck, refreshStatus, logout,
+  sendCaptcha, loginCellphone, loginEmail,
+};

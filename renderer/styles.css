@@ -394,6 +394,32 @@ body::after {
 .tab.is-active { color: var(--text); font-weight: 600; }
 .tab.is-active::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; border-radius: 2px; background: var(--accent); }
 .tab__count { color: var(--faint); font-family: var(--font-mono); font-size: 11px; margin-left: 5px; }
+
+/* 平台切换 chips：多平台搜索（网易云 / QQ 音乐 / 酷狗） */
+.platforms { display: flex; align-items: center; gap: 8px; margin: 14px 0 0; flex-wrap: wrap; }
+.platform {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 6px 13px; border-radius: 999px; cursor: pointer;
+  font-size: 12.5px; font-weight: 500; color: var(--muted);
+  background: color-mix(in srgb, var(--panel) 70%, transparent);
+  border: 1px solid var(--border);
+  transition: color var(--dur-fast), border-color var(--dur-fast), background var(--dur-fast), transform var(--dur-fast);
+}
+.platform:hover { color: var(--text); border-color: var(--accent-line); transform: translateY(-1px); }
+.platform.is-active {
+  color: var(--text); font-weight: 600;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent) inset;
+}
+.platform__dot {
+  width: 7px; height: 7px; border-radius: 50%; flex: none;
+  background: var(--faint); transition: background var(--dur-fast), box-shadow var(--dur-fast);
+}
+.platform[data-platform="wy"] .platform__dot { background: #e8453c; }
+.platform[data-platform="tx"] .platform__dot { background: #31c27c; }
+.platform[data-platform="kg"] .platform__dot { background: #2f7cf6; }
+.platform.is-active .platform__dot { box-shadow: 0 0 8px currentColor; }
 .searchmeta { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
 .searchmeta__text { color: var(--muted); font-size: 12.5px; }
 .searchmeta__text b { color: var(--text); font-weight: 600; }
@@ -411,6 +437,38 @@ body::after {
 }
 .guide-head__main > svg { width: 15px; height: 15px; color: var(--accent); flex: none; }
 .guide-head__hint { font-size: 11.5px; color: var(--faint); font-family: var(--font-mono); letter-spacing: .06em; }
+/* 云歌单分区（我创建 / 我收藏） */
+.cloud-section { margin-bottom: 26px; }
+.cloud-section:last-child { margin-bottom: 0; }
+
+/* ---------- 音效：场景预设卡片 + 参数滑块 ---------- */
+.fx-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px; margin: 4px 0 18px;
+}
+.fx-card {
+  display: flex; flex-direction: column; gap: 5px; text-align: left;
+  padding: 12px 13px; border-radius: 12px; cursor: pointer;
+  background: color-mix(in srgb, var(--panel) 72%, transparent);
+  border: 1px solid var(--border);
+  transition: border-color var(--dur-fast), background var(--dur-fast), transform var(--dur-fast);
+}
+.fx-card:hover { border-color: var(--accent-line); transform: translateY(-1px); }
+.fx-card.is-active {
+  background: color-mix(in srgb, var(--accent) 13%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+.fx-card__name { font-size: 13px; font-weight: 600; color: var(--text); }
+.fx-card.is-active .fx-card__name { color: var(--accent); }
+.fx-card__desc { font-size: 11.5px; color: var(--faint); line-height: 1.5; }
+.fx-slider { margin-bottom: 16px; }
+.fx-slider__head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  margin-bottom: 8px;
+}
+.fx-slider__val { font-family: var(--font-mono); font-size: 12px; color: var(--accent); }
+.fx-slider input[type="range"] { width: 100%; accent-color: var(--accent); cursor: pointer; }
+.fx-actions { display: flex; gap: 8px; margin-top: 2px; }
 .guide-head__clear {
   display: inline-flex; align-items: center; gap: 5px;
   font-size: 12px; color: var(--faint); background: none; border: none; cursor: pointer;
@@ -684,6 +742,8 @@ select option:disabled { background: var(--surface-2); color: var(--faint); }
   vertical-align: 1px; flex: none;
 }
 body.no-srctag .track__src { display: none; }
+/* 多平台来源：QQ/酷狗用中性色，避免和网易云的强调色混淆 */
+.track__src--plat { color: var(--muted); border-color: var(--border); }
 
 /* ---------- 歌词增强（播放详情页设置） ---------- */
 /* 歌词对齐 */
@@ -1091,6 +1151,33 @@ body.mini .pb__track .iconbtn { display: none; }
 .qr__status.is-ok { color: var(--ok); }
 .qr__status.is-wait { color: var(--warn); }
 .qr__hint { font-size: 11.5px; color: var(--faint); line-height: 1.6; }
+
+/* 登录方式切换（扫码 / 手机号 / 邮箱） */
+.login-tabs {
+  display: flex; gap: 4px; margin-bottom: 16px; padding: 4px;
+  border-radius: 10px; background: color-mix(in srgb, var(--panel) 80%, transparent);
+  border: 1px solid var(--border);
+}
+.login-tab {
+  flex: 1; padding: 7px 10px; border-radius: 7px; cursor: pointer;
+  font-size: 12.5px; color: var(--muted); border: 1px solid transparent;
+  background: transparent; transition: color var(--dur-fast), background var(--dur-fast);
+}
+.login-tab:hover { color: var(--text); }
+.login-tab.is-active {
+  color: var(--text); font-weight: 600;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 42%, transparent);
+}
+.login-pane { min-height: 208px; padding-bottom: 4px; }
+.login-form { display: flex; flex-direction: column; margin-bottom: 14px; }
+.login-form .field { margin-bottom: 12px; }
+.field__row { display: flex; gap: 8px; align-items: stretch; }
+.field__row input { flex: 1; min-width: 0; }
+.field__row .btn { flex: none; white-space: nowrap; }
+.btn--block { width: 100%; justify-content: center; padding: 10px 14px; margin-top: 2px; }
+.btn--block:disabled { opacity: .6; cursor: default; }
+.login-hint { margin-top: 10px; font-size: 11.5px; color: var(--faint); line-height: 1.6; }
 
 /* 账号信息等只读键值行 */
 .kv { display: flex; align-items: baseline; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--border); }

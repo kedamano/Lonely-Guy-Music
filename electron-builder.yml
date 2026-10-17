@@ -45,6 +45,43 @@ nsis:
   # 安装包内嵌卸载器
   deleteAppDataOnUninstall: false
 
+# ---- macOS（dmg 安装器 + zip 供自动更新）----
+# 未签名：首次打开需在「系统设置 → 隐私与安全性」放行，或右键 → 打开。
+mac:
+  icon: build/icon.png
+  category: public.app-category.music
+  darkModeSupport: true
+  # 没有 Apple 开发者证书时显式置空，避免 CI 因找不到签名身份而失败
+  identity: null
+  hardenedRuntime: false
+  gatekeeperAssess: false
+  target:
+    - target: dmg
+      arch: [x64, arm64]
+    - target: zip
+      arch: [x64, arm64]
+  artifactName: GumanMusic-${version}-${arch}.${ext}
+
+# ---- Linux（AppImage 免安装 + deb 包）----
+linux:
+  icon: build/icon.png
+  category: AudioVideo
+  synopsis: 桌面音乐客户端
+  description: 孤男音乐 · 在线曲库 + 洛雪音源 + 实时频谱 + 卡拉OK歌词的桌面音乐客户端。
+  maintainer: kedamano <1392806889@qq.com>
+  target:
+    - target: AppImage
+      arch: [x64]
+    - target: deb
+      arch: [x64]
+  artifactName: GumanMusic-${version}-${arch}.${ext}
+  desktop:
+    entry:
+      Name: 孤男音乐
+      GenericName: Music Player
+      Comment: 桌面音乐客户端
+      Categories: AudioVideo;Audio;Player;
+
 # ---- 自动更新发布源（electron-updater）----
 # 使用 GitHub Releases 作为更新源：应用启动时检查本仓库最新 Release 的 latest.yml。
 # 打包时用 GH_TOKEN 环境变量，electron-builder 可直接上传（--publish always）。

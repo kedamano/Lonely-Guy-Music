@@ -779,6 +779,7 @@ module.exports = {
   getConfig,
   resolveMusicUrl,
   resolveAction,
+  requestAsync,
   QUALITY_ORDER,
   __test: { requestAsync, getProxyFor },
 };

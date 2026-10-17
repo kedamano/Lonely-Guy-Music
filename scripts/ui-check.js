@@ -190,7 +190,7 @@ const apiPost = (p, body) => fetch(BASE + p, {
   await page.waitForTimeout(500);
   check('我的页渲染', (await page.locator('.h-title').textContent()) === '我的');
   const mineTabs = await page.locator('.tab').count();
-  check('我的页五个标签', mineTabs === 5, `${mineTabs} 个`);
+  check('我的页六个标签', mineTabs === 6, `${mineTabs} 个`);
   await page.locator('.tab').nth(1).click();
   await page.waitForTimeout(400);
   check('历史标签有播放记录', (await page.locator('.track').count()) > 0, `${await page.locator('.track').count()} 首`);

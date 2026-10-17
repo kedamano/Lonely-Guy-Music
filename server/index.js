@@ -19,6 +19,7 @@ const sourceManager = require('./source-manager');
 const account = require('./account');
 const library = require('./library');
 const translate = require('./translate');
+const platformSearch = require('./platform-search');
 
 // 监听地址：仅本机回环。/api 会注入登录 cookie，绑 0.0.0.0 会把它暴露给整个局域网。
 const HOST_BIND = process.env.HOST_BIND || '127.0.0.1';
@@ -159,6 +160,22 @@ app.post('/api/sources/action', async (req, res) => {
   }
 });
 
+// ============== 多平台搜索（QQ / 酷狗；网易云走 NCM 反代） ==============
+
+app.get('/api/platform/list', (req, res) => {
+  res.json({ code: 0, data: platformSearch.platformList(), online });
+});
+
+app.get('/api/platform/search', async (req, res) => {
+  const { platform, keywords, page, limit } = req.query;
+  try {
+    const data = await platformSearch.searchPlatform(platform, keywords, page, limit);
+    res.json({ code: 0, data, online });
+  } catch (e) {
+    res.status(502).json({ code: 502, msg: e.message || '平台搜索失败' });
+  }
+});
+
 // ============== 账号 API（凭证不出后端） ==============
 
 app.get('/api/account/state', (req, res) => {
@@ -182,6 +199,36 @@ app.get('/api/account/qr/check', async (req, res) => {
     const key = String(req.query.key || '');
     if (!key) throw new Error('缺少登录密钥');
     res.json({ code: 0, data: await account.qrCheck(key) });
+  } catch (e) {
+    res.status(400).json({ code: 400, msg: e.message });
+  }
+});
+
+// 手机号验证码登录：先发码，再登录（凭证同样只留在后端）
+app.post('/api/account/captcha', async (req, res) => {
+  try {
+    if (!online) throw new Error('网易云接口暂不可达（离线模式无法登录）');
+    res.json({ code: 0, data: await account.sendCaptcha(req.body?.phone) });
+  } catch (e) {
+    res.status(400).json({ code: 400, msg: e.message });
+  }
+});
+
+app.post('/api/account/login/cellphone', async (req, res) => {
+  try {
+    if (!online) throw new Error('网易云接口暂不可达（离线模式无法登录）');
+    const data = await account.loginCellphone(req.body?.phone, req.body?.captcha);
+    res.json({ code: 0, data: { ...data, ...account.publicState() } });
+  } catch (e) {
+    res.status(400).json({ code: 400, msg: e.message });
+  }
+});
+
+app.post('/api/account/login/email', async (req, res) => {
+  try {
+    if (!online) throw new Error('网易云接口暂不可达（离线模式无法登录）');
+    const data = await account.loginEmail(req.body?.email, req.body?.password);
+    res.json({ code: 0, data: { ...data, ...account.publicState() } });
   } catch (e) {
     res.status(400).json({ code: 400, msg: e.message });
   }
@@ -306,7 +353,7 @@ app.get('/api/local', (req, res) => {
 
 // 这些路径由上方专用路由处理，或由后端自己调用上游，不走通配反代
 const RESERVED = ['/api/__mode', '/api/proxy', '/api/local'];
-const isReserved = (p) => RESERVED.includes(p) || p.startsWith('/api/sources') || p.startsWith('/api/account') || p.startsWith('/api/library');
+const isReserved = (p) => RESERVED.includes(p) || p.startsWith('/api/sources') || p.startsWith('/api/account') || p.startsWith('/api/library') || p.startsWith('/api/platform');
 // 登录类接口会把 cookie 放进响应体，禁止渲染层直接访问（凭证只能留在后端）
 const BLOCKED = ['/login', '/logout', '/relogin', '/regvalid'];
 

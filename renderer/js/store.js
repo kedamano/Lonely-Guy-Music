@@ -11,6 +11,10 @@ const DEFAULTS = {
   eqGains: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
   sleepMin: 0,
   sourceQuality: 'flac', // 音源默认音质
+  // 音效链：场景预设 + 可覆盖的空间宽度/混响强度
+  fxScene: 'off',        // off | studio | live | headphone | night
+  fxWidth: null,         // null = 跟随场景；数字 = 用户手动覆盖（1 = 原始立体声）
+  fxReverb: null,        // null = 跟随场景；0-1 = 用户手动覆盖
   lyricBg: 'blur',       // 歌词页背景：app=应用背景 / blur=封面模糊 / color=封面主色
   stageOpen: false,
   searchHistory: [],

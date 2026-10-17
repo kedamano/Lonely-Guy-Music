@@ -8,6 +8,7 @@ const $ = (id) => document.getElementById(id);
 let state = { loggedIn: false, user: null, loginAt: 0, online: false };
 let pollTimer = null;
 let pollKey = '';
+let codeTimer = null;
 
 function goto(name, param) {
   window.dispatchEvent(new CustomEvent('guman:navigate', { detail: { name, param } }));
@@ -125,28 +126,186 @@ function setStatus(node, text, cls = '') {
 
 function stopPolling() {
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  if (codeTimer) { clearInterval(codeTimer); codeTimer = null; }
   pollKey = '';
+}
+
+// 登录成功后的统一收尾（扫码 / 手机号 / 邮箱共用）
+function onLoggedIn(d) {
+  state = {
+    ...state,
+    loggedIn: true,
+    user: (d && d.user) || state.user,
+    loginAt: Date.now(),
+  };
+  paintAccount();
+  emitChanged();
+  const name = (d && d.user && d.user.nickname) || '网易云用户';
+  setTimeout(() => { closeModal(); toast('已登录：' + name); }, 350);
 }
 
 export function openLoginModal() {
   if (!state.online) return toast('网易云接口不可达，暂时无法登录');
 
-  const imgBox = el('div', { class: 'qr__img' }, [el('span', { class: 'spinner' })]);
-  const status = el('div', { class: 'qr__status is-wait', text: '正在生成二维码…' });
-  const body = el('div', { class: 'qr' }, [
-    imgBox,
-    status,
-    el('div', { class: 'qr__hint', text: '扫码并在手机上确认后自动登录；凭证仅保存在本机用户目录。' }),
-  ]);
+  const pane = el('div', { class: 'login-pane' });
+  const tabBar = el('div', { class: 'login-tabs', role: 'tablist', 'aria-label': '登录方式' });
+  const TABS = [
+    { key: 'qr', label: '扫码登录' },
+    { key: 'phone', label: '手机号' },
+    { key: 'email', label: '邮箱' },
+  ];
+  const setTab = (key) => {
+    if (key !== 'qr') stopPolling();
+    tabBar.querySelectorAll('.login-tab').forEach((b) => {
+      const on = b.dataset.loginTab === key;
+      b.classList.toggle('is-active', on);
+      b.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+    pane.innerHTML = '';
+    if (key === 'phone') pane.appendChild(phonePane());
+    else if (key === 'email') pane.appendChild(emailPane());
+    else pane.appendChild(qrPane());
+  };
+  TABS.forEach((t) => tabBar.appendChild(el('button', {
+    type: 'button', class: 'login-tab', 'data-login-tab': t.key, role: 'tab',
+    onclick: () => setTab(t.key),
+  }, t.label)));
 
   openModal({
-    title: '扫码登录',
-    desc: '打开网易云音乐 App → 我的 → 右上角扫码。',
-    body,
+    title: '登录网易云',
+    desc: '扫码最快；手机号与邮箱走网易云官方登录接口。凭证只保存在本机用户目录，界面层拿不到。',
+    body: el('div', {}, [tabBar, pane]),
     actions: [el('button', { class: 'btn', text: '取消', onclick: () => closeModal() })],
     onClose: stopPolling,
   });
+  setTab('qr');
+}
+
+function qrPane() {
+  const imgBox = el('div', { class: 'qr__img' }, [el('span', { class: 'spinner' })]);
+  const status = el('div', { class: 'qr__status is-wait', text: '正在生成二维码…' });
+  const wrap = el('div', { class: 'qr' }, [
+    imgBox,
+    status,
+    el('div', { class: 'qr__hint', text: '打开网易云音乐 App → 我的 → 右上角扫码，确认后自动登录。' }),
+  ]);
   loadQr(imgBox, status);
+  return wrap;
+}
+
+// 表单输入时不要触发全局快捷键
+function fieldInput(attrs) {
+  const input = el('input', attrs);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); input.dispatchEvent(new CustomEvent('guman:submit', { bubbles: true })); }
+    e.stopPropagation();
+  });
+  return input;
+}
+
+function phonePane() {
+  const phone = fieldInput({
+    type: 'tel', placeholder: '手机号', autocomplete: 'tel', inputmode: 'numeric', maxlength: '11',
+  });
+  const code = fieldInput({
+    type: 'text', placeholder: '短信验证码', autocomplete: 'one-time-code', inputmode: 'numeric', maxlength: '8',
+  });
+  const sendBtn = el('button', { type: 'button', class: 'btn btn--small', text: '获取验证码' });
+  const submitBtn = el('button', { type: 'button', class: 'btn btn--primary btn--block', text: '登录' });
+  const hint = el('div', { class: 'login-hint', text: '验证码由网易云发送；国内手机号默认 +86。' });
+
+  sendBtn.addEventListener('click', async () => {
+    if (codeTimer) return;
+    const v = phone.value.trim();
+    if (!/^\d{6,15}$/.test(v)) return toast('请输入正确的手机号');
+    sendBtn.disabled = true;
+    sendBtn.textContent = '发送中…';
+    try {
+      await api.sendCaptcha(v);
+      toast('验证码已发送，请查收短信');
+      let left = 60;
+      sendBtn.textContent = `${left}s 后重发`;
+      codeTimer = setInterval(() => {
+        left -= 1;
+        if (left <= 0) {
+          clearInterval(codeTimer); codeTimer = null;
+          sendBtn.disabled = false; sendBtn.textContent = '获取验证码';
+        } else {
+          sendBtn.textContent = `${left}s 后重发`;
+        }
+      }, 1000);
+    } catch (e) {
+      toast(e.message || '验证码发送失败', 4500, 'error');
+      sendBtn.disabled = false;
+      sendBtn.textContent = '获取验证码';
+    }
+  });
+
+  const submit = async () => {
+    if (submitBtn.disabled) return;
+    submitBtn.disabled = true;
+    const label = submitBtn.textContent;
+    submitBtn.textContent = '登录中…';
+    try {
+      const d = await api.loginCellphone(phone.value.trim(), code.value.trim());
+      onLoggedIn(d);
+    } catch (e) {
+      toast(e.message || '登录失败', 5000, 'error');
+      submitBtn.disabled = false;
+      submitBtn.textContent = label;
+    }
+  };
+  submitBtn.addEventListener('click', submit);
+
+  const wrap = el('div', { class: 'login-form' }, [
+    el('label', { class: 'field' }, [el('span', { class: 'field__label', text: '手机号' }), phone]),
+    el('label', { class: 'field' }, [
+      el('span', { class: 'field__label', text: '验证码' }),
+      el('div', { class: 'field__row' }, [code, sendBtn]),
+    ]),
+    submitBtn,
+    hint,
+  ]);
+  wrap.addEventListener('guman:submit', submit);
+  requestAnimationFrame(() => phone.focus());
+  return wrap;
+}
+
+function emailPane() {
+  const email = fieldInput({
+    type: 'email', placeholder: '邮箱地址', autocomplete: 'username', spellcheck: 'false',
+  });
+  const pwd = fieldInput({
+    type: 'password', placeholder: '网易云密码', autocomplete: 'current-password',
+  });
+  const submitBtn = el('button', { type: 'button', class: 'btn btn--primary btn--block', text: '登录' });
+  const hint = el('div', { class: 'login-hint', text: '使用网易云音乐主站账号密码；开启二次验证的账号建议改用扫码。' });
+
+  const submit = async () => {
+    if (submitBtn.disabled) return;
+    submitBtn.disabled = true;
+    const label = submitBtn.textContent;
+    submitBtn.textContent = '登录中…';
+    try {
+      const d = await api.loginEmail(email.value.trim(), pwd.value);
+      onLoggedIn(d);
+    } catch (e) {
+      toast(e.message || '登录失败', 5000, 'error');
+      submitBtn.disabled = false;
+      submitBtn.textContent = label;
+    }
+  };
+  submitBtn.addEventListener('click', submit);
+
+  const wrap = el('div', { class: 'login-form' }, [
+    el('label', { class: 'field' }, [el('span', { class: 'field__label', text: '邮箱' }), email]),
+    el('label', { class: 'field' }, [el('span', { class: 'field__label', text: '密码' }), pwd]),
+    submitBtn,
+    hint,
+  ]);
+  wrap.addEventListener('guman:submit', submit);
+  requestAnimationFrame(() => email.focus());
+  return wrap;
 }
 
 async function loadQr(imgBox, status) {
@@ -186,10 +345,7 @@ async function pollQr(imgBox, status) {
   if (code === 803) {
     stopPolling();
     setStatus(status, '登录成功', 'is-ok');
-    state = { ...state, loggedIn: true, user: d.user || state.user, loginAt: Date.now() };
-    paintAccount();
-    emitChanged();
-    setTimeout(() => { closeModal(); toast('已登录：' + (d.user?.nickname || '网易云用户')); }, 450);
+    onLoggedIn(d);
     return;
   }
   if (code === 800) {

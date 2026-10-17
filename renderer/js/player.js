@@ -5,6 +5,15 @@ import { store, EQ_FREQS } from './store.js';
 import { trackKey } from './ui.js';
 import { accountState } from './account.js';
 
+// 音效场景预设：bass 低音增益(dB) / width 立体声宽度倍数 / wet 混响量 / comp 压缩强度(0-1)
+export const FX_SCENES = {
+  off: { label: '关闭', desc: '原始音频直通，不做任何染色', bass: 0, width: 1, wet: 0, comp: 0 },
+  studio: { label: '录音室', desc: '干净紧致的监听感，几乎无混响', bass: 0, width: 1.05, wet: 0.04, comp: 0.18 },
+  live: { label: '现场', desc: '厅堂混响 + 更宽声场，像站在台下', bass: 2, width: 1.3, wet: 0.24, comp: 0.22 },
+  headphone: { label: '耳机', desc: '强化低频与声场包裹感，适合入耳式', bass: 4.5, width: 1.55, wet: 0.12, comp: 0.12 },
+  night: { label: '夜间', desc: '收窄动态范围，深夜不炸耳', bass: -3, width: 1, wet: 0.06, comp: 0.7 },
+};
+
 export class Player {
   constructor() {
     this.audio = new Audio();
@@ -122,17 +131,110 @@ export class Player {
     this.gain = this.ctx.createGain();
     this.gain.gain.value = this._targetGain();
 
-    // source -> 10段 peaking 均衡器 -> analyser -> gain -> destination
+    // 音频链：source → 低音增强 → 10 段 EQ → M/S 宽度 → 干/湿(混响) → 压缩 → 分析 → 主音量 → 输出
+    this.bassNode = this.ctx.createBiquadFilter();
+    this.bassNode.type = 'lowshelf';
+    this.bassNode.frequency.value = 160;
+    this.bassNode.gain.value = 0;
+
     let node = this.source;
+    node.connect(this.bassNode);
+    node = this.bassNode;
     this.eqNodes = [];
     EQ_FREQS.forEach((f, i) => {
       const bp = this.ctx.createBiquadFilter();
       bp.type = 'peaking'; bp.frequency.value = f; bp.Q.value = 1.0; bp.gain.value = this.eqGains[i] || 0;
       node.connect(bp); node = bp; this.eqNodes.push(bp);
     });
-    node.connect(this.analyser);
+
+    // M/S 矩阵：M=(L+R)/2, S=(L-R)/2，输出 L'=M+S·w、R'=M−S·w。
+    // w=1 时完全还原原始立体声，>1 拉宽声场，<1 收窄。
+    this.splitter = this.ctx.createChannelSplitter(2);
+    node.connect(this.splitter);
+    this.midSum = this.ctx.createGain();
+    this.sideSum = this.ctx.createGain();
+    const lMid = this.ctx.createGain(); lMid.gain.value = 0.5;
+    const rMid = this.ctx.createGain(); rMid.gain.value = 0.5;
+    const lSide = this.ctx.createGain(); lSide.gain.value = 0.5;
+    const rSide = this.ctx.createGain(); rSide.gain.value = -0.5;
+    this.splitter.connect(lMid, 0); this.splitter.connect(rMid, 1);
+    this.splitter.connect(lSide, 0); this.splitter.connect(rSide, 1);
+    lMid.connect(this.midSum); rMid.connect(this.midSum);
+    lSide.connect(this.sideSum); rSide.connect(this.sideSum);
+
+    this.widthNode = this.ctx.createGain(); // gain = 宽度倍数
+    this.sideSum.connect(this.widthNode);
+    this.invWidth = this.ctx.createGain();
+    this.invWidth.gain.value = -1;
+    this.widthNode.connect(this.invWidth);
+
+    const outL = this.ctx.createGain();
+    const outR = this.ctx.createGain();
+    this.midSum.connect(outL); this.widthNode.connect(outL);
+    this.midSum.connect(outR); this.invWidth.connect(outR);
+
+    this.merger = this.ctx.createChannelMerger(2);
+    outL.connect(this.merger, 0, 0);
+    outR.connect(this.merger, 0, 1);
+
+    // 混响：干湿并行，IR 由程序生成（噪声指数衰减），无需外部音频文件
+    this.dryGain = this.ctx.createGain();
+    this.wetGain = this.ctx.createGain();
+    this.wetGain.gain.value = 0;
+    this.convolver = this.ctx.createConvolver();
+    this.convolver.buffer = this._makeImpulse(1.9, 2.8);
+    this.merger.connect(this.dryGain);
+    this.merger.connect(this.convolver);
+    this.convolver.connect(this.wetGain);
+
+    // 动态压缩：夜间模式把动态范围收窄，避免忽大忽小
+    this.comp = this.ctx.createDynamicsCompressor();
+    this.comp.threshold.value = 0;
+    this.comp.knee.value = 24;
+    this.comp.ratio.value = 1;
+    this.comp.attack.value = 0.005;
+    this.comp.release.value = 0.24;
+    this.dryGain.connect(this.comp);
+    this.wetGain.connect(this.comp);
+
+    this.comp.connect(this.analyser);
     this.analyser.connect(this.gain);
     this.gain.connect(this.ctx.destination);
+
+    this.applyFx();
+  }
+
+  // 程序生成混响脉冲响应：声道独立的噪声 × 指数衰减
+  _makeImpulse(seconds = 1.9, decay = 2.8) {
+    const rate = this.ctx.sampleRate;
+    const len = Math.max(1, Math.floor(rate * seconds));
+    const buf = this.ctx.createBuffer(2, len, rate);
+    for (let ch = 0; ch < 2; ch++) {
+      const d = buf.getChannelData(ch);
+      for (let i = 0; i < len; i++) {
+        d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, decay);
+      }
+    }
+    return buf;
+  }
+
+  /** 应用当前音效设置（场景预设 + 用户覆盖值）；设置页调用，播放中即时生效 */
+  applyFx() {
+    if (!this.ctx || !this.bassNode) return;
+    const scene = FX_SCENES[store.get('fxScene')] || FX_SCENES.off;
+    const rawW = store.get('fxWidth');
+    const rawWet = store.get('fxReverb');
+    const width = rawW == null ? scene.width : Math.max(0, Number(rawW) || 0);
+    const wet = rawWet == null ? scene.wet : Math.max(0, Math.min(1, Number(rawWet) || 0));
+    const comp = scene.comp || 0;
+    const now = this.ctx.currentTime;
+    this.bassNode.gain.setTargetAtTime(scene.bass, now, 0.05);
+    this.widthNode.gain.setTargetAtTime(width, now, 0.05);
+    this.wetGain.gain.setTargetAtTime(wet, now, 0.08);
+    // 混响越多，干声略降，避免整体音量被推高
+    this.dryGain.gain.setTargetAtTime(1 - wet * 0.35, now, 0.08);
+    this.comp.threshold.setTargetAtTime(comp > 0 ? -(10 + comp * 26) : 0, now, 0.05);
+    this.comp.ratio.setTargetAtTime(comp > 0 ? 1 + comp * 7 : 1, now, 0.05);
   }
 
   _targetGain() {
@@ -141,9 +243,28 @@ export class Player {
 
   async _resolveUrl(track, token) {
     if (track.source === 'local') return track.url;
-    // 优先走 LX Music 自定义音源（wy=网易云，因为搜索来自网易云）
+    // 多平台曲目：id 是平台原始标识（songmid / hash），网易云官方接口不认识，
+    // 只能交给音源脚本取链；失败时直接报错，不做无意义的官方接口回退。
+    const platform = track.platform || 'wy';
     const hasSources = await api.hasEnabledSources();
     if (token !== this._token) return null;
+
+    if (platform !== 'wy') {
+      if (!hasSources) {
+        throw new Error(`这首来自${platform === 'tx' ? 'QQ 音乐' : platform === 'kg' ? '酷狗音乐' : platform}，需先在「设置 → 自定义源」启用支持该平台的音源`);
+      }
+      const q = store.get('sourceQuality') || 'flac';
+      try {
+        const res = await api.resolveMusicUrl(platform, track.musicInfo, q);
+        if (token !== this._token) return null;
+        if (res && res.url) return '/api/proxy?url=' + encodeURIComponent(res.url);
+        throw new Error('音源未返回可用链接');
+      } catch (e) {
+        throw new Error(`取链失败：${e.message}`);
+      }
+    }
+
+    // 优先走 LX Music 自定义音源（wy=网易云，因为搜索来自网易云）
     if (hasSources) {
       try {
         const musicInfo = {
@@ -184,12 +305,21 @@ export class Player {
     let lines = [];
     this.lyricTransFrom = '';
     if (track.source !== 'local') {
+      const platform = track.platform || 'wy';
       try {
-        const r = await api.lyric(track.id);
-        if (token !== this._token) return;
-        lines = parseLRC(r.lrc && r.lrc.lyric);
-        if (attachTranslation(lines, r.tlyric && r.tlyric.lyric).some((l) => l.trans)) {
-          this.lyricTransFrom = 'cloud';
+        if (platform !== 'wy') {
+          // 非网易云平台：歌词只能问音源要
+          const r = await api.sourceLyric(platform, track.musicInfo);
+          if (token !== this._token) return;
+          const raw = r && (typeof r.lyric === 'string' ? r.lyric : r.lyric && r.lyric.lyric);
+          lines = parseLRC(raw);
+        } else {
+          const r = await api.lyric(track.id);
+          if (token !== this._token) return;
+          lines = parseLRC(r.lrc && r.lrc.lyric);
+          if (attachTranslation(lines, r.tlyric && r.tlyric.lyric).some((l) => l.trans)) {
+            this.lyricTransFrom = 'cloud';
+          }
         }
       } catch (_) { lines = []; }
     }

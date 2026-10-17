@@ -1,0 +1,107 @@
+name: Release
+
+# 打 tag（v1.2.0 这种）即触发：三平台并行构建 → 汇总上传到同一个 GitHub Release。
+# 也可在 Actions 页面手动触发（workflow_dispatch）。
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: 构建 ${{ matrix.label }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            label: Windows (NSIS)
+            platform: win
+          - os: macos-latest
+            label: macOS (dmg + zip)
+            platform: mac
+          - os: ubuntu-latest
+            label: Linux (AppImage + deb)
+            platform: linux
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 配置 Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 生成字体与图标资源
+        run: |
+          npm run fonts
+          npm run icons
+
+      - name: 打包（Windows）
+        if: matrix.platform == 'win'
+        run: npx electron-builder --win nsis --publish never
+
+      - name: 打包（macOS）
+        if: matrix.platform == 'mac'
+        run: npx electron-builder --mac --publish never
+        env:
+          # 未签名构建：显式关闭签名/公证，避免 runner 上找不到证书
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+      - name: 打包（Linux）
+        if: matrix.platform == 'linux'
+        run: npx electron-builder --linux --publish never
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: guman-${{ matrix.platform }}
+          path: |
+            dist/*.exe
+            dist/*.dmg
+            dist/*.zip
+            dist/*.AppImage
+            dist/*.deb
+            dist/latest*.yml
+            dist/*.blockmap
+          if-no-files-found: error
+
+  publish:
+    name: 发布到 GitHub Releases
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: 下载全部构建产物
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: 创建或更新 Release 并上传资产
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $TAG 已存在，追加/覆盖资产"
+          else
+            gh release create "$TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "孤男音乐 $TAG" \
+              --generate-notes
+          fi
+          find artifacts -type f \
+            \( -name '*.exe' -o -name '*.dmg' -o -name '*.zip' -o -name '*.AppImage' \
+               -o -name '*.deb' -o -name 'latest*.yml' -o -name '*.blockmap' \) \
+            -print -exec gh release upload "$TAG" {} --repo "$GITHUB_REPOSITORY" --clobber \;

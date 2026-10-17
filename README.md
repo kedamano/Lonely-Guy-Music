@@ -8,9 +8,9 @@
 
 在线网易云曲库 · 洛雪自定义音源 · 实时频谱 · 卡拉OK歌词 · 10 段均衡器 · 桌面歌词 · 本地音乐
 
-[![Version](https://img.shields.io/badge/version-1.1.0-ff6a2c?style=flat-square)](https://github.com/kedamano/Lonely-Guy-Music/releases)
+[![Version](https://img.shields.io/badge/version-1.2.0-ff6a2c?style=flat-square)](https://github.com/kedamano/Lonely-Guy-Music/releases)
 [![Electron](https://img.shields.io/badge/Electron-44-47848F?style=flat-square&logo=electron&logoColor=white)](https://www.electronjs.org/)
-[![Tests](https://img.shields.io/badge/tests-96%20checks-passing-3fb950?style=flat-square)](#-ui-回归测试)
+[![Tests](https://img.shields.io/badge/tests-160%20checks-passing-3fb950?style=flat-square)](#-ui-回归测试)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-8957e5?style=flat-square)](https://github.com/kedamano/Lonely-Guy-Music/releases)
 [![License](https://img.shields.io/badge/license-MIT-c9d1d9?style=flat-square)](LICENSE)
 [![i18n](https://img.shields.io/badge/语言-简体%20%7C%20繁體%20%7C%20EN-ff6a2c?style=flat-square)](#-界面语言)
@@ -62,10 +62,12 @@
 | 功能 | 说明 |
 |---|---|
 | 发现 / 音乐馆 / 搜索 | 精选歌单墙、分类浏览、输入即搜（300ms 防抖）+ 回车执行，切页保留关键词与结果 |
+| **多平台搜索** | 一键切换 **网易云 / QQ 音乐 / 酷狗**，直接按平台检索，跳出网易云元数据；QQ 拿到 songmid、酷狗拿到 FileHash，可直接交给音源取链播放 |
 | 歌单详情 | 一键播放全部 / 随机播放 / 整单加入队列 |
 | 播放控制 | 播放/暂停/上一首/下一首、列表·单曲·顺序三种循环、拖拽进度与音量 |
 | 播放队列 | 抽屉式管理，可增删、跳播，插入位置可选顶部/底部 |
 | 收藏与历史 | 可移除/清空，跨会话持久化，每首歌记住上次播放进度 |
+| **云歌单** | 登录后直接读取账号里的「我喜欢的音乐」与全部云端歌单，点击即播，不占用本机空间 |
 | 分页 | 音乐馆与搜索走服务端分页（每页 30），超长歌单走客户端分页（每页 50） |
 
 ### 🔊 声场体验（桌面端专属）
@@ -74,6 +76,7 @@
 |---|---|
 | 🎚 实时频谱 | Web Audio `AnalyserNode` 环形频谱 + 波形，无音频时待机动画 |
 | 🎛 图形均衡器 | 10 段 EQ，多套预设（流行/摇滚/人声/古典/低音增强…），真实作用于音频链路 |
+| 🌌 空间音频 | M/S 矩阵立体声加宽 + 卷积混响 + 低音增强 + 动态压缩，**5 套场景预设**（关闭 / 录音室 / 现场 / 耳机 / 夜间），宽度与混响强度可微调 |
 | 🎤 卡拉OK歌词 | LRC 逐行高亮 + 逐字填充 + 当前行缩放，点击任意行跳转播放 |
 | 🖥 桌面歌词 | 独立无边框透明置顶窗口，三色自定义、字号/加粗/对齐可调、可鼠标穿透 |
 | 💤 睡眠定时 | 到点先淡出再暂停，面板内实时倒计时 |
@@ -88,6 +91,7 @@
 | 🪟 迷你模式 | 自定义标题栏 + 真实缩放置顶；系统托盘常驻 |
 | ⌨️ 全局媒体键 | `MediaPlayPause` 等媒体键 + 托盘播放控制 |
 | 🧭 系统媒体会话 | Windows/macOS 媒体面板显示曲目信息，任务栏图标实时显示播放进度 |
+| 🔐 三种登录方式 | 扫码 / 手机号验证码 / 邮箱密码，凭证只落本机后端；登录后歌单、收藏、每日推荐全部可用 |
 | 🌐 三语言界面 | 简体中文 / 繁體中文 / English，切换即时生效 |
 | 🎭 4 套强调色 | 信号琥珀 / 霓虹紫 / 电子青 / 玫红，全站色彩由 CSS `color-mix` 派生，切换无死角 |
 | 🪶 性能友好 | 6 档字号、4 档窗口尺寸、动画可关（低性能设备更流畅） |
@@ -141,6 +145,10 @@ npm run dist:dir    # 仅产出免安装目录
 | 实时搜索 | 洛雪自定义源管理 |
 |:---:|:---:|
 | ![搜索](docs/screenshots/search.png) | ![音源管理](docs/screenshots/sources.png) |
+
+| 音效场景与空间音频 | 三种登录方式 |
+|:---:|:---:|
+| ![音效场景](docs/screenshots/sound-fx.png) | ![登录](docs/screenshots/login.png) |
 
 ---
 
@@ -202,6 +210,7 @@ server/
   index.js            主机后端：托管 UI + /api 反代或离线 mock + 音源 API + 同源音频代理
   mock.js             离线示例数据（与网易云响应结构一致）
   source-manager.js   洛雪音源运行时：vm 沙箱执行音源脚本、lx API 实现、URL/歌词/封面解析
+  platform-search.js  多平台搜索：QQ 音乐（vkeys）/ 酷狗（官方搜索接口）适配与统一曲目结构
   account.js          账号能力
   library.js          本地曲库
   translate.js        歌词翻译
@@ -263,13 +272,14 @@ scripts/
 
 ## 🧪 UI 回归测试
 
-基于 Playwright 的真实交互回归（共 **96 项断言**）：
+基于 Playwright 的真实交互回归（共 **160 项断言**）：
 
 ```bash
 npm start                        # 或 ENABLE_NCM=0 node server/index.js
-node scripts/ui-check.js         # 29 项交互检查 + 截图
-node scripts/ui-smoke.js         # 65 项全量冒烟（封面加载/分页/设置/语言切换…）
+node scripts/ui-check.js         # 65 项交互检查 + 截图
+node scripts/ui-smoke.js         # 64 项全量冒烟（封面加载/分页/设置/语言切换…）
 node scripts/proxy-check.js      # 12 项代理机制单测
+node scripts/search-guide-check.js # 19 项搜索引导与多语言检查
 ```
 
 覆盖范围：实时搜索 / 切 tab / 播放 / 拖拽进度 / 收藏 / 队列 / 歌词浮层 / 声场 EQ 与睡眠 / 本地音频导入播放 / 迷你模式 / 响应式布局 / 全部设置分区 / 封面真实加载断言 / 运行时 console 错误检查。截图输出到 `scripts/shots/`。
@@ -278,10 +288,12 @@ node scripts/proxy-check.js      # 12 项代理机制单测
 
 ## 🗺 路线图
 
-- [ ] 多平台搜索：跳出网易云元数据，直接按音源平台搜索
-- [ ] 歌单云同步 / 账号登录完善
-- [ ] macOS / Linux 安装包
-- [ ] 音效链扩展（空间音频 / 音频场景预设）
+- [x] **多平台搜索**：已支持网易云 / QQ 音乐 / 酷狗，直接按平台检索
+- [x] **歌单云同步 / 账号登录**：扫码 + 手机验证码 + 邮箱密码，云歌单直接播放
+- [x] **macOS / Linux 安装包**：dmg / zip / AppImage / deb，由 GitHub Actions 三平台矩阵构建
+- [x] **音效链扩展**：空间音频（M/S 加宽 + 卷积混响 + 压缩）与 5 套场景预设
+- [ ] 咪咕 / 汽水搜索源接入
+- [ ] 歌单双向编辑（在客户端内增删云端歌单）
 
 已支持 ✅：应用内自动更新（`electron-updater` + GitHub Releases 源，发布新版本后启动即提示）
 

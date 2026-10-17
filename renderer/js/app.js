@@ -358,11 +358,80 @@ const search = {
   songs: [], playlists: [], songCount: 0, playlistCount: 0,
   resultQuery: '', resultType: 0, seq: 0,
   page: 1, pageCount: 1, total: 0,
+  // 多平台搜索：wy 走网易云 NCM，tx/kg 直接打平台接口
+  platform: 'wy',
 };
+
+// 平台清单（后端 /api/platform/list 为准，失败回退内置，保证离线也能用界面）
+const PLATFORM_FALLBACK = [
+  { key: 'wy', label: '网易云' }, { key: 'tx', label: 'QQ 音乐' }, { key: 'kg', label: '酷狗' },
+];
+let platformOptions = PLATFORM_FALLBACK.slice();
+let platformLoaded = false;
+async function ensurePlatforms() {
+  if (platformLoaded) return;
+  platformLoaded = true;
+  try {
+    const list = await api.platformList();
+    if (Array.isArray(list) && list.length) platformOptions = list.map((p) => ({ key: p.key, label: p.label }));
+  } catch (_) { /* 离线/接口异常时保持内置清单 */ }
+}
+
+// 平台搜索结果 → 统一曲目结构（与网易云曲目字段一致，额外带 platform/musicInfo）
+function normalizePlatformTrack(t) {
+  return {
+    id: t.id,
+    platform: t.platform,
+    platformId: t.platformId,
+    name: t.name,
+    artist: t.artist,
+    album: t.album,
+    albumPic: t.albumPic,
+    duration: t.duration,
+    source: 'platform',
+    playable: t.playable !== false,
+    musicInfo: t.musicInfo,
+  };
+}
+
+function platformChips() {
+  const wrap = el('div', { class: 'platforms reveal', role: 'tablist', 'aria-label': '搜索平台' });
+  platformOptions.forEach((p) => {
+    const active = search.platform === p.key;
+    wrap.appendChild(el('button', {
+      type: 'button',
+      class: 'platform' + (active ? ' is-active' : ''),
+      'data-platform': p.key,
+      role: 'tab',
+      'aria-selected': active ? 'true' : 'false',
+      onclick: () => setSearchPlatform(p.key),
+    }, [
+      el('span', { class: 'platform__dot', 'data-plat': p.key }),
+      p.label,
+    ]));
+  });
+  return wrap;
+}
+
+function setSearchPlatform(key) {
+  if (search.platform === key) return;
+  search.platform = key;
+  search.page = 1;
+  // 平台搜索只支持歌曲：从歌单 tab 切过来时自动回到歌曲
+  if (key !== 'wy' && search.type === 1000) search.type = 1;
+  document.querySelectorAll('[data-platform]').forEach((b) => {
+    const on = b.dataset.platform === key;
+    b.classList.toggle('is-active', on);
+    b.setAttribute('aria-selected', on ? 'true' : 'false');
+  });
+  updateSearchTabs();
+  if (search.query.trim()) runSearch(true);
+  else renderSearchOutput();
+}
 
 function renderSearch() {
   view.innerHTML = '';
-  view.appendChild(heading('SEARCH', '搜索', '实时搜索网易云曲库：输入即搜，回车立即执行。'));
+  view.appendChild(heading('SEARCH', '搜索', '多平台搜索：网易云 / QQ 音乐 / 酷狗，输入即搜，回车立即执行。'));
   const input = el('input', {
     id: 'searchInput', type: 'text', placeholder: '想听点什么？歌曲 / 歌单 / 艺人',
     autocomplete: 'off', spellcheck: 'false',
@@ -388,6 +457,7 @@ function renderSearch() {
     el('kbd', { text: 'Enter' }),
   ]);
   view.appendChild(bar);
+  view.appendChild(platformChips());
 
   const tabs = el('div', { class: 'tabs reveal' }, [
     el('div', { class: 'tab', 'data-search-type': '1', role: 'tab', tabindex: '0', onclick: () => setSearchType(1) }, [
@@ -413,6 +483,15 @@ function renderSearch() {
   if (search.query.trim() && (search.resultQuery !== search.query.trim() || search.resultType !== search.type)) {
     runSearch(true);
   }
+  // 平台清单以后端为准：拿到后原地替换 chips（内置清单保证首帧不空）
+  ensurePlatforms().then(() => {
+    if (currentRoute !== 'search') return;
+    const old = view.querySelector('.platforms');
+    if (old) {
+      old.replaceWith(platformChips());
+      updateSearchTabs();
+    }
+  });
   requestAnimationFrame(() => {
     input.focus();
     const len = input.value.length;
@@ -455,6 +534,8 @@ function setSearchType(type) {
 function updateSearchTabs() {
   document.querySelectorAll('[data-search-type]').forEach((tab) => {
     const type = Number(tab.dataset.searchType);
+    // 平台搜索只覆盖歌曲：非网易云平台隐藏「歌单」tab，避免切到空页面
+    tab.style.display = type === 1000 && search.platform !== 'wy' ? 'none' : '';
     tab.classList.toggle('is-active', type === search.type);
     tab.setAttribute('aria-selected', type === search.type ? 'true' : 'false');
   });
@@ -476,19 +557,32 @@ async function runSearch(immediate = false) {
   search.error = '';
   renderSearchOutput();
   try {
-    // 服务端分页：offset = (page-1) * pageSize
-    const r = await api.search(q, search.type, SEARCH_PAGE_SIZE, (search.page - 1) * SEARCH_PAGE_SIZE);
-    if (seq !== search.seq) return;
-    if (search.type === 1) {
-      search.songs = (r.result.songs || []).map(normalizeTrack);
-      search.songCount = Number(r.result.songCount || search.songs.length);
-      search.total = search.songCount;
+    if (search.platform !== 'wy') {
+      // 直连平台接口（QQ / 酷狗）：不分类型，统一按歌曲返回
+      const d = await api.platformSearch(search.platform, q, search.page, SEARCH_PAGE_SIZE);
+      if (seq !== search.seq) return;
+      search.songs = (d.list || []).map(normalizePlatformTrack);
+      search.playlists = [];
+      // 平台接口不返回总数：徽标显示本页条数，分页用 hasMore 判断是否还有下一页
+      search.songCount = search.songs.length;
+      search.playlistCount = 0;
+      search.total = null;
+      search.pageCount = d.hasMore ? search.page + 1 : Math.max(1, search.page);
     } else {
-      search.playlists = (r.result.playlists || []).map(normalizePlaylist);
-      search.playlistCount = Number(r.result.playlistCount || search.playlists.length);
-      search.total = search.playlistCount;
+      // 服务端分页：offset = (page-1) * pageSize
+      const r = await api.search(q, search.type, SEARCH_PAGE_SIZE, (search.page - 1) * SEARCH_PAGE_SIZE);
+      if (seq !== search.seq) return;
+      if (search.type === 1) {
+        search.songs = (r.result.songs || []).map(normalizeTrack);
+        search.songCount = Number(r.result.songCount || search.songs.length);
+        search.total = search.songCount;
+      } else {
+        search.playlists = (r.result.playlists || []).map(normalizePlaylist);
+        search.playlistCount = Number(r.result.playlistCount || search.playlists.length);
+        search.total = search.playlistCount;
+      }
+      search.pageCount = Math.max(1, Math.ceil(search.total / SEARCH_PAGE_SIZE));
     }
-    search.pageCount = Math.max(1, Math.ceil(search.total / SEARCH_PAGE_SIZE));
     search.resultQuery = q;
     search.resultType = search.type;
   } catch (e) {
@@ -566,7 +660,14 @@ function renderSearchOutput() {
       return;
     }
     const metaText = el('div', { class: 'searchmeta__text' });
-    tpl(metaText, '找到 <b>{n}</b> 首与「{q}」相关的歌曲', { n: search.songCount || search.songs.length, q: escapeHtml(q) });
+    const platLabel = (platformOptions.find((p) => p.key === search.platform) || {}).label || '';
+    tpl(metaText, search.platform === 'wy'
+      ? '找到 <b>{n}</b> 首与「{q}」相关的歌曲'
+      : '{plat} · 本页 <b>{n}</b> 首与「{q}」相关', {
+      n: search.songCount || search.songs.length,
+      q: escapeHtml(q),
+      plat: platLabel,
+    });
     out.appendChild(el('div', { class: 'searchmeta' }, [
       metaText,
       el('div', { class: 'searchmeta__actions' }, [
@@ -825,13 +926,14 @@ const MINE_TABS = [
   { key: 'his', label: '历史' },
   { key: 'queue', label: '队列' },
   { key: 'sheet', label: '我的歌单' },
+  { key: 'cloud', label: '云歌单' },
   { key: 'pin', label: '订阅歌单' },
 ];
 let mineTab = 'fav';
 let minePage = 1; // 收藏/历史/队列客户端分页页码
 function renderMine() {
   view.innerHTML = '';
-  view.appendChild(heading('LIBRARY', '我的', '收藏、播放历史、当前队列与本地歌单。'));
+  view.appendChild(heading('LIBRARY', '我的', '收藏、播放历史、当前队列、本地歌单与网易云账号歌单。'));
   const favs = playableList(store.get('favorites') || []);
   const history = playableList(store.get('history') || []);
   const tabsData = MINE_TABS.map((t) => ({
@@ -840,6 +942,7 @@ function renderMine() {
       : t.key === 'his' ? history.length
       : t.key === 'queue' ? player.queue.length
       : t.key === 'sheet' ? store.getSheets().length
+      : t.key === 'cloud' ? (cloudCache.list.length || 0)
       : store.getPins().length,
   }));
   const tabs = el('div', { class: 'tabs reveal' });
@@ -856,6 +959,7 @@ function renderMine() {
   view.appendChild(out);
 
   if (mineTab === 'sheet') { renderMineSheets(out); revealIn(); applyLang(currentLang()); return; }
+  if (mineTab === 'cloud') { renderMineCloud(out); revealIn(); applyLang(currentLang()); return; }
   if (mineTab === 'pin') { renderMinePins(out); revealIn(); applyLang(currentLang()); return; }
 
   if (mineTab === 'queue') {
@@ -1299,6 +1403,143 @@ async function importPlaylistByLink() {
     if (currentRoute === 'mine') renderMine();
   } catch (e) {
     toast('导入失败：' + (e.message || '歌单不存在'), 5000, 'error');
+  }
+}
+
+/* ---------------- 我的：云歌单（直接读账号，不落本机） ---------------- */
+const cloudCache = { uid: '', list: [], at: 0 };
+const LIKED_ID = '__liked__';
+
+function renderMineCloud(out) {
+  const st = accountState();
+  if (!st.loggedIn) {
+    out.appendChild(emptyState({
+      iconName: 'user', title: '登录后查看云端歌单',
+      desc: '登录网易云账号后，这里会列出你在云端创建与收藏的全部歌单，还能直接播放「我喜欢的音乐」——换设备也不会丢。',
+      actions: [
+        el('button', { class: 'btn btn--primary', onclick: () => openLoginModal() }, [icon('user'), '登录网易云']),
+        el('button', { class: 'btn', onclick: () => navigate('hall') }, [icon('hall'), '先去音乐馆']),
+      ],
+    }));
+    return;
+  }
+
+  const uid = String((st.user && st.user.userId) || '');
+  const info = el('div', { class: 'lib-toolbar__info' });
+  const cnt = el('span', {});
+  tpl(cnt, '云端歌单 <b>{n}</b> 个', { n: cloudCache.uid === uid ? cloudCache.list.length : 0 });
+  info.appendChild(cnt);
+  info.appendChild(el('span', {
+    class: 'lib-toolbar__hint',
+    text: '直接在账号歌单上播放，只读不改动云端数据',
+  }));
+  out.appendChild(el('div', { class: 'lib-toolbar' }, [
+    info,
+    el('div', { class: 'lib-toolbar__actions' }, [
+      el('button', {
+        class: 'btn btn--small',
+        onclick: () => { cloudCache.uid = ''; cloudCache.list = []; renderMine(); },
+      }, [icon('refresh'), '刷新']),
+    ]),
+  ]));
+
+  const grid = el('div', { class: 'grid' });
+  out.appendChild(grid);
+
+  if (!uid) {
+    grid.appendChild(emptyState({
+      iconName: 'alert', title: '未取到账号 UID',
+      desc: '当前登录态缺少用户资料（多为游客态）。请在网易云 App 内登录主账号后重新扫码。',
+    }));
+    return;
+  }
+
+  if (cloudCache.uid === uid && cloudCache.list.length) {
+    paintCloudLists(out, grid);
+    return;
+  }
+
+  grid.appendChild(el('div', { class: 'search-loading' }, [el('span', { class: 'spinner' }), '正在同步云端歌单…']));
+  api.userPlaylists(uid).then((r) => {
+    const raw = (r && r.playlist) || [];
+    cloudCache.uid = uid;
+    cloudCache.at = Date.now();
+    cloudCache.list = raw.map((p) => ({
+      id: p.id,
+      name: p.name || '未命名歌单',
+      picUrl: p.coverImgUrl || p.picUrl || '',
+      playCount: p.playCount,
+      creator: p.creator,
+      trackCount: Number(p.trackCount || 0),
+      own: String((p.creator && p.creator.userId) || '') === uid,
+    }));
+    // 用户可能已经切走：只在仍停留在云歌单页时重绘
+    if (currentRoute !== 'mine' || mineTab !== 'cloud') return;
+    renderMine();
+  }).catch((e) => {
+    grid.innerHTML = '';
+    grid.appendChild(emptyState({
+      iconName: 'alert', title: '云端歌单加载失败',
+      desc: e.message || '网络异常',
+      actions: [el('button', { class: 'btn', onclick: () => renderMine() }, [icon('refresh'), '重试'])],
+    }));
+  });
+}
+
+function paintCloudLists(out, grid) {
+  grid.remove();
+  const own = cloudCache.list.filter((p) => p.own);
+  const other = cloudCache.list.filter((p) => !p.own);
+
+  const section = (title, hint, list, open) => {
+    const sec = el('div', { class: 'cloud-section reveal' });
+    const head = el('div', { class: 'guide-head' }, [
+      el('div', { class: 'guide-head__main' }, [icon('sheet'), el('span', { text: title })]),
+      hint ? el('span', { class: 'guide-head__hint', text: hint }) : null,
+    ]);
+    sec.appendChild(head);
+    const g = el('div', { class: 'grid' });
+    renderPlaylistGrid(g, list, open);
+    sec.appendChild(g);
+    return sec;
+  };
+
+  out.appendChild(section('我喜欢的音乐 / 我创建的歌单', `${own.length} 个 · 云端实时读取`, [
+    { id: LIKED_ID, name: '我喜欢的音乐', picUrl: '', playCount: 0 },
+    ...own.filter((p) => p.id !== LIKED_ID),
+  ], (pl) => (pl.id === LIKED_ID ? playLikedSongs() : openPlaylist(pl))));
+
+  if (other.length) {
+    out.appendChild(section('我收藏的歌单', `${other.length} 个`, other, openPlaylist));
+  }
+}
+
+// 「我喜欢的音乐」：likelist 只给 id，再批量取详情
+let likedLoading = false;
+async function playLikedSongs() {
+  if (likedLoading) return;
+  const st = accountState();
+  const uid = String((st.user && st.user.userId) || '');
+  if (!uid) return toast('未取到账号 UID，请重新登录');
+  likedLoading = true;
+  toast('正在读取「我喜欢的音乐」…');
+  try {
+    const r = await api.likeList(uid);
+    const ids = (r && r.ids) || [];
+    if (!ids.length) throw new Error('「我喜欢的音乐」还是空的');
+    const tracks = [];
+    for (let i = 0; i < ids.length; i += 200) {
+      const chunk = ids.slice(i, i + 200);
+      const d = await api.songDetail(chunk.join(','));
+      (d.songs || []).forEach((s) => tracks.push(normalizeTrack(s)));
+    }
+    if (!tracks.length) throw new Error('歌曲详情为空');
+    playCollection(tracks, 0);
+    toast(`已载入 ${tracks.length} 首喜欢的音乐`);
+  } catch (e) {
+    toast(e.message || '读取失败', 4500, 'error');
+  } finally {
+    likedLoading = false;
   }
 }
 
@@ -2356,6 +2597,11 @@ function applySetting(key, value) {
     case 'showSourceTag':
       document.body.classList.toggle('no-srctag', !value);
       if (currentRoute) router(); // 重渲染当前列表，刷新来源标签
+      break;
+    case 'fxScene':
+    case 'fxWidth':
+    case 'fxReverb':
+      player.applyFx(); // 音效链参数即时生效
       break;
     case 'downloadEnabled':
       if ($('npDownload')) $('npDownload').style.display = value ? '' : 'none';

@@ -68,6 +68,10 @@ export const api = {
   playlistTracks: (id) => request('/playlist/track/all', { id }),
   // 搜索：offset 用于服务端分页（歌曲/歌单总数在 result.songCount / playlistCount）
   search: (keywords, type = 1, limit = 30, offset = 0) => request('/search', { keywords, type, limit, offset }),
+  // 多平台搜索：直接按平台检索（wy 走上面，tx/kg 走这里）
+  platformList: () => dataOf(request('/platform/list')),
+  platformSearch: (platform, keywords, page = 1, limit = 30) =>
+    dataOf(request('/platform/search', { platform, keywords, page, limit })),
   songUrl: (id) => request('/song/url', { id }),
   lyric: (id) => request('/lyric', { id }),
   // 歌词译文兜底：key 只存后端，渲染层拿不到
@@ -93,8 +97,14 @@ export const api = {
   accountState: () => dataOf(request('/account/state')),
   qrStart: () => dataOf(request('/account/qr/start')),
   qrCheck: (key) => dataOf(request('/account/qr/check', { key })),
+  sendCaptcha: (phone) => post('/account/captcha', { phone }),
+  loginCellphone: (phone, captcha) => post('/account/login/cellphone', { phone, captcha }, 25000),
+  loginEmail: (email, password) => post('/account/login/email', { email, password }, 25000),
   accountRefresh: () => post('/account/refresh', {}),
   logout: () => post('/account/logout', {}),
+  // 云端歌单：uid 来自登录态；/likelist 只返回 id 列表
+  likeList: (uid) => request('/likelist', { uid }),
+  songDetail: (ids) => request('/song/detail', { ids: Array.isArray(ids) ? ids.join(',') : ids }),
 
   // 本地曲库（跨会话：后端按绝对路径登记，播放走 /api/local?id=）
   library: () => dataOf(request('/library')),
@@ -112,6 +122,9 @@ export const api = {
   setProxy: (proxy) => post('/sources/proxy', { proxy }),
   resolveMusicUrl: (sourcePlatform, musicInfo, quality, sourceId) =>
     post('/sources/resolve', { sourcePlatform, musicInfo, quality, sourceId }, 20000),
+  // 音源歌词：非网易云平台（tx/kg）拿不到网易云歌词接口，交给音源脚本解析
+  sourceLyric: (sourcePlatform, musicInfo, sourceId) =>
+    post('/sources/action', { sourcePlatform, action: 'lyric', musicInfo, sourceId }, 20000),
 };
 
 // 归一化：歌单对象 → 统一字段。
