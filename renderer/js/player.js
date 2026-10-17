@@ -3,6 +3,7 @@ import { api } from './api.js';
 import { parseLRC } from './lyrics.js';
 import { store, EQ_FREQS } from './store.js';
 import { trackKey } from './ui.js';
+import { accountState } from './account.js';
 
 export class Player {
   constructor() {
@@ -16,6 +17,7 @@ export class Player {
     this.listeners = {};
     this.sleepTimer = null;
     this._token = 0;
+    this._scrobbled = false;
     this._wireAudio();
   }
 
@@ -27,6 +29,7 @@ export class Player {
       this.emit('time', this.audio.currentTime, this.duration);
       this._updatePositionState();
       this._saveProgress();
+      this._maybeScrobble();
     });
     this.audio.addEventListener('loadedmetadata', () => {
       this.emit('time', this.audio.currentTime, this.duration);
@@ -39,7 +42,10 @@ export class Player {
       this.emit('playstate', false);
       this._setPreventSleep(false);
     });
-    this.audio.addEventListener('ended', () => this._onEnded());
+    this.audio.addEventListener('ended', () => {
+      this._reportScrobble(); // 播完补报一次，覆盖时长不足阈值的短歌
+      this._onEnded();
+    });
     this.audio.addEventListener('error', () => {
       if (this.audio.error) {
         const name = this.current?.name ? `《${this.current.name}》` : '';
@@ -71,6 +77,33 @@ export class Player {
     if (now - (this._progSavedAt || 0) < 5000) return;
     this._progSavedAt = now;
     store.setProgress(trackKey(this.current), this.audio.currentTime || 0);
+  }
+
+  /**
+   * 听歌记录回写：让网易云端的每日推荐吃到本地收听行为。
+   * 阈值取"过半或满 4 分钟"，切歌秒退不算有效收听；本地文件与未登录不上报。
+   */
+  _maybeScrobble() {
+    if (this._scrobbled || !this._scrobbleReady()) return;
+    const d = this.duration;
+    const need = d ? Math.max(30, Math.min(d / 2, 240)) : 30;
+    if ((this.audio.currentTime || 0) >= need) this._reportScrobble();
+  }
+
+  _scrobbleReady() {
+    const t = this.current;
+    if (!t || t.source === 'local' || !/^\d+$/.test(String(t.id))) return false;
+    return accountState().loggedIn;
+  }
+
+  async _reportScrobble() {
+    if (this._scrobbled) return; // 每首只报一次：达标上报过后，播完不再重复
+    if (!this._scrobbleReady()) return;
+    this._scrobbled = true; // 尽力而为：失败也不重试，避免每 250ms 的 timeupdate 打爆接口
+    const t = this.current;
+    const played = Math.round(this.audio.currentTime || this.duration / 2 || 30);
+    try { await api.scrobble(t.id, played, t.id); }
+    catch (_) { /* 上报失败静默，不打断播放 */ }
   }
 
   get duration() {
@@ -171,6 +204,7 @@ export class Player {
     if (this.index < 0) this.index = 0;
 
     this.current = track;
+    this._scrobbled = false;
     store.setQueue(this.queue, this.index);
     this.emit('loading', true);
     this.emit('trackchange', track, this.index);

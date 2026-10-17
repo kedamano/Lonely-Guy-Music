@@ -159,6 +159,14 @@ const shot = async (page, name) => {
   const sels = await page.locator('.settings__select').count();
   check('设置页渲染', sels >= 3, `${sels} 个下拉`);
   check('设置页快捷键说明', (await page.locator('.settings__section').count()) >= 3, `${await page.locator('.settings__section').count()} 个区块`);
+  // 原生下拉面板由系统绘制：option 若继承半透明底会在白底上糊成一片，必须是不透明深色
+  const optLum = await page.evaluate(() => {
+    const o = document.querySelector('select option');
+    if (!o) return -1;
+    const n = getComputedStyle(o).backgroundColor.match(/\d+/g).map(Number);
+    return 0.2126 * n[0] + 0.7152 * n[1] + 0.0722 * n[2];
+  });
+  check('下拉选项为不透明深色底', optLum >= 0 && optLum < 90, `亮度 ${Math.round(optLum)}`);
   await shot(page, '09-settings');
 
   // ---------- 本地音乐导入 ----------
@@ -213,6 +221,47 @@ const shot = async (page, name) => {
   await page.waitForTimeout(700);
   check('删除后回到我的', (await page.locator('.h-title').textContent()) === '我的');
   await shot(page, '14-sheet-deleted');
+
+  // ---------- 订阅歌单（来源标记） ----------
+  await page.evaluate(() => { location.hash = '#/mine/pin'; });
+  await page.waitForTimeout(700);
+  check('订阅歌单工具栏', (await page.locator('.lib-toolbar').count()) > 0);
+  check('未登录时给登录引导', (await page.locator('.lib-toolbar__hint').textContent()).includes('登录'));
+  const pullBtn = await page.getByText('拉取云端歌单').count();
+  check('未登录不显示拉取云端', pullBtn === 0);
+  await shot(page, '15-mine-pin');
+
+  // ---------- 听歌记录回写 ----------
+  await page.evaluate(() => { location.hash = '#/discover'; });
+  await page.waitForTimeout(900);
+  await page.locator('.track').first().click();
+  await page.waitForTimeout(2500);
+  const scrobbleGate = await page.evaluate(() => {
+    const p = window.__guman.player;
+    return { source: p.current?.source, id: p.current?.id, ready: p._scrobbleReady() };
+  });
+  check('在线曲目进入上报候选', scrobbleGate.source === 'online' && /^\d+$/.test(String(scrobbleGate.id)),
+    `${scrobbleGate.source}/${scrobbleGate.id}`);
+  check('未登录时不上报听歌记录', scrobbleGate.ready === false);
+
+  const scrobbleReq = page.waitForRequest((r) => r.url().includes('/api/scrobble'), { timeout: 8000 })
+    .catch(() => null);
+  await page.evaluate(async () => {
+    const p = window.__guman.player;
+    // 离线环境没有登录态，绕过账号闸门，只验证"到达阈值 → 发出上报请求"这条链路
+    p._scrobbleReady = () => true;
+    p._scrobbled = false;
+    if (p.audio.paused) { try { await p.audio.play(); } catch (_) { /* 自动播放策略 */ } }
+    const d = p.duration;
+    const need = d ? Math.max(30, Math.min(d / 2, 240)) : 30;
+    const maxSeek = isFinite(p.audio.duration) && p.audio.duration > need + 2 ? p.audio.duration - 1 : need + 1;
+    p.audio.currentTime = Math.min(need + 1, maxSeek);
+  });
+  const hit = await scrobbleReq;
+  check('到达阈值后上报听歌记录', !!hit, hit ? new URL(hit.url()).search.slice(0, 48) : '未发出请求');
+  const dup = await page.evaluate(() => window.__guman.player._scrobbled);
+  check('同一首不重复上报', dup === true);
+  await shot(page, '16-scrobble');
 
   // ---------- 迷你模式 ----------
   await page.keyboard.press('m');

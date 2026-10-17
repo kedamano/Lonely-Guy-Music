@@ -171,6 +171,7 @@ export const store = {
   },
 
   /* ---------- 在线歌单收藏（引用落盘，内容实时拉取） ---------- */
+  // cloud: 已在网易云订阅（换设备不丢）；own: 网易云里自己创建的歌单
   getPins() { return (data.pins || []).slice(); },
   findPin(id) { return (data.pins || []).find((p) => String(p.id) === String(id)) || null; },
   togglePin(pl) {
@@ -184,6 +185,29 @@ export const store = {
     });
     persist();
     return i < 0;
+  },
+  /** 拉取/推送云端后写入或更新一条收藏，返回是否新建 */
+  upsertPin(pl, patch = {}) {
+    const arr = data.pins || (data.pins = []);
+    const id = String(pl.id);
+    const hit = arr.find((p) => String(p.id) === id);
+    const base = {
+      id, name: pl.name || hit?.name || '未命名歌单',
+      picUrl: pl.picUrl || pl.coverImgUrl || hit?.picUrl || '',
+      trackCount: pl.trackCount ?? hit?.trackCount, playCount: pl.playCount ?? hit?.playCount,
+      creator: pl.creator?.nickname || pl.creator || hit?.creator || '',
+    };
+    if (hit) Object.assign(hit, base, patch);
+    else arr.unshift({ ...base, addedAt: Date.now(), cloud: false, ...patch });
+    persist();
+    return !hit;
+  },
+  markPin(id, patch) {
+    const hit = (data.pins || []).find((p) => String(p.id) === String(id));
+    if (!hit) return null;
+    Object.assign(hit, patch);
+    persist();
+    return hit;
   },
   isPinned(id) { return (data.pins || []).some((p) => String(p.id) === String(id)); },
 

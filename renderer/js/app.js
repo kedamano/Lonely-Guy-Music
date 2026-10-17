@@ -73,8 +73,39 @@ async function router() {
 window.addEventListener('hashchange', router);
 
 /* ---------------- 视图：发现 ---------------- */
+// 游客态（网易云返回 profile:null + anonimousUser:true）时，界面看起来"登录了却什么都没有"，
+// 需要在首屏说清楚原因并给出去主账号重扫的入口。
+let anonBarDismissed = false;
+
+async function reloginMainAccount() {
+  try { await api.logout(); await refreshAccount(); } catch (_) { /* 退出失败也继续给扫码入口 */ }
+  openLoginModal();
+}
+
+function anonBanner() {
+  const st = accountState();
+  if (anonBarDismissed || !st.loggedIn || !st.user?.anonymous) return null;
+  return el('div', { class: 'anonbar reveal' }, [
+    el('div', { class: 'anonbar__txt' }, [
+      el('div', { class: 'anonbar__title', text: '当前是网易云游客账号' }),
+      el('div', {
+        class: 'anonbar__desc',
+        text: '收藏、订阅、播放记录都能正常用，但网易云没有给这个账号昵称和头像，个性化推荐也基本是空的。'
+          + '请在手机网易云 App 里确认已登录主账号，再回来重新扫码。',
+      }),
+    ]),
+    el('button', { class: 'btn btn--small', onclick: () => reloginMainAccount() }, [icon('user'), '换主账号登录']),
+    el('button', {
+      class: 'btn-ghost',
+      onclick: (e) => { anonBarDismissed = true; e.currentTarget.remove(); },
+    }, ['不再提示']),
+  ]);
+}
+
 async function renderDiscover(token) {
   view.innerHTML = '';
+  const ab = anonBanner();
+  if (ab) view.appendChild(ab);
   view.appendChild(heading(
     'DISCOVER', '孤男音乐',
     '把任意设备的扬声器，变成一台声场仪表盘。在线曲库 × 本地音乐 × 实时频谱。',
@@ -1112,23 +1143,35 @@ function openTrackMenu(track, index, pos, { scope = null, onRemove = null, remov
 }
 
 /* ---------------- 收藏的在线歌单 ---------------- */
+// 来源标记：本机=只存在这台设备，云端=已在网易云收藏（换设备不丢），自建=云端里我自己创建的歌单
+function pinBadge(p) {
+  if (!p.cloud) return { text: '本机', cls: 'is-local' };
+  return p.own ? { text: '自建', cls: 'is-own' } : { text: '云端', cls: 'is-cloud' };
+}
+
 function pinCard(p) {
+  const badge = pinBadge(p);
   const card = el('div', {
     class: 'pl-card reveal', role: 'button', tabindex: '0',
     'aria-label': `打开歌单 ${p.name}`,
     onclick: () => openPlaylist(p),
     oncontextmenu: (e) => {
       e.preventDefault();
-      openMenu(e.clientX, e.clientY, [
+      const items = [
         { text: '打开', iconName: 'play', run: () => openPlaylist(p) },
-        { text: '取消收藏', iconName: 'trash', danger: true, run: () => unpin(p) },
-      ]);
+      ];
+      if (!p.cloud && accountState().loggedIn) {
+        items.push({ text: '同步到网易云', iconName: 'upload', run: () => pushPinToCloud(p) });
+      }
+      items.push({ sep: true }, { text: '取消收藏', iconName: 'trash', danger: true, run: () => unpin(p) });
+      openMenu(e.clientX, e.clientY, items);
     },
   });
   card.appendChild(cover(p.id, p.picUrl));
   card.querySelector('.pl-card__cover').appendChild(
     el('button', { class: 'pl-card__play', title: '打开歌单', 'aria-label': '打开歌单', onclick: (e) => { e.stopPropagation(); openPlaylist(p); } }, [icon('play')]),
   );
+  card.querySelector('.pl-card__cover').appendChild(el('span', { class: 'pl-badge ' + badge.cls, text: badge.text }));
   card.appendChild(el('div', { class: 'pl-card__name', text: p.name }));
   card.appendChild(el('div', { class: 'pl-card__meta', text: [p.trackCount ? `${p.trackCount} 首` : '', p.creator || ''].filter(Boolean).join(' · ') }));
   return card;
@@ -1140,15 +1183,69 @@ async function toggleSubscribe(pl) {
   const on = store.togglePin(obj);
   toast(on ? '已收藏歌单' : '已取消收藏歌单');
   if (accountState().loggedIn) {
-    try { await api.subscribePlaylist(pl.id, on ? 1 : 0); }
-    catch (e) { toast('网易云端同步失败：' + (e.message || '接口不可用'), 4500, 'error'); }
+    try {
+      await api.subscribePlaylist(pl.id, on ? 1 : 0);
+      store.markPin(pl.id, { cloud: on, own: false }); // 云端确认成功才改来源标记
+    } catch (e) {
+      toast('网易云端同步失败：' + (e.message || '接口不可用'), 4500, 'error');
+    }
   }
   if (currentRoute === 'playlist') renderPlaylist(String(pl.id), routeToken);
+  if (currentRoute === 'mine') renderMine();
 }
 
-function unpin(p) {
-  store.togglePin(p);
-  toast('已取消收藏歌单');
+async function pushPinToCloud(p) {
+  try {
+    await api.subscribePlaylist(p.id, 1);
+    store.markPin(p.id, { cloud: true, own: false });
+    toast(`已同步「${p.name}」到网易云收藏`);
+    if (currentRoute === 'mine') renderMine();
+  } catch (e) {
+    toast('同步失败：' + (e.message || '接口不可用'), 5000, 'error');
+  }
+}
+
+async function pullCloudPlaylists() {
+  const st = accountState();
+  if (!st.loggedIn) return toast('请先登录网易云账号');
+  const uid = st.user?.userId;
+  if (!uid) return toast('账号信息缺少 UID，请在账号菜单里退出后重新扫码');
+  toast('正在拉取云端歌单…');
+  try {
+    const r = await api.userPlaylists(uid);
+    const list = r?.playlist || [];
+    if (!list.length) return toast('云端还没有歌单');
+    let added = 0;
+    list.forEach((p) => {
+      // subscribed=true 是收藏的别人的歌单，false 是自己创建的
+      if (store.upsertPin(normalizePlaylist(p), {
+        trackCount: p.trackCount, playCount: p.playCount, cloud: true, own: !p.subscribed,
+      })) added++;
+    });
+    toast(`云端 ${list.length} 个歌单已同步，新增 ${added} 个`);
+    if (currentRoute === 'mine') renderMine();
+  } catch (e) {
+    toast('拉取失败：' + (e.message || '接口不可用'), 5000, 'error');
+  }
+}
+
+async function unpin(p) {
+  // 云端也有的条目要问一句，避免"以为取消了收藏，手机上网易云还在"
+  let unlink = false;
+  if (p.cloud && accountState().loggedIn) {
+    unlink = await confirmModal({
+      title: '取消收藏', okText: '同时取消云端', cancelText: '只删本机',
+      desc: `「${p.name}」已同步在网易云端。要同时在网易云取消订阅吗？只删本机的话，下次拉取云端还会回来。`,
+    });
+  } else {
+    unlink = false;
+  }
+  if (unlink) {
+    try { await api.subscribePlaylist(p.id, 0); }
+    catch (e) { toast('云端取消失败：' + (e.message || '接口不可用'), 5000, 'error'); return; }
+  }
+  if (store.isPinned(p.id)) store.togglePin(p);
+  toast(unlink ? '已从本机与网易云取消收藏' : '已从本机取消收藏');
   renderMine();
 }
 
@@ -1176,11 +1273,28 @@ async function importPlaylistByLink() {
 
 function renderMinePins(out) {
   const pins = store.getPins();
+  const cloud = pins.filter((p) => p.cloud).length;
+  const loggedIn = accountState().loggedIn;
   out.appendChild(el('div', { class: 'lib-toolbar' }, [
-    (() => { const n = el('div', { class: 'lib-toolbar__info' }); tpl(n, '本机收藏歌单 <b>{n}</b> 个', { n: pins.length }); return n; })(),
+    (() => {
+      // tpl 的节点会被 applyLang 重写 innerHTML，附加内容必须放在它的兄弟节点里
+      const n = el('div', { class: 'lib-toolbar__info' });
+      const cnt = el('span', {});
+      tpl(cnt, '收藏歌单 <b>{n}</b> 个', { n: pins.length });
+      n.appendChild(cnt);
+      n.appendChild(el('span', {
+        class: 'lib-toolbar__hint',
+        text: cloud ? `其中 ${cloud} 个已在网易云端，换设备可拉回` : (loggedIn ? '全部只存在本机，点「拉取云端」合并账号里的歌单' : '登录后可与网易云收藏互相同步'),
+      }));
+      return n;
+    })(),
     el('div', { class: 'lib-toolbar__actions' }, [
+      loggedIn
+        ? el('button', { class: 'btn btn--small', onclick: () => pullCloudPlaylists() }, [icon('refresh'), '拉取云端歌单'])
+        : null,
       el('button', { class: 'btn btn--small', onclick: () => importPlaylistByLink() }, [icon('link'), '导入歌单链接']),
-    ]),
+    ].filter(Boolean),
+    ),
   ]));
   if (pins.length) {
     const grid = el('div', { class: 'grid' });
@@ -1189,29 +1303,17 @@ function renderMinePins(out) {
   } else {
     out.appendChild(emptyState({
       iconName: 'heart', title: '还没有收藏在线歌单',
-      desc: '在歌单详情页点「收藏歌单」，或粘贴网易云歌单链接导入。收藏只记录在本机。',
+      desc: loggedIn
+        ? '点「拉取云端歌单」把你网易云账号里的歌单一次搬进来；也可以粘贴链接或去音乐馆收藏。'
+        : '在歌单详情页点「收藏歌单」，或粘贴网易云歌单链接导入。登录后可以与网易云互相同步。',
       actions: [
-        el('button', { class: 'btn btn--primary', onclick: () => importPlaylistByLink() }, [icon('link'), '导入歌单链接']),
+        loggedIn
+          ? el('button', { class: 'btn btn--primary', onclick: () => pullCloudPlaylists() }, [icon('refresh'), '拉取云端歌单'])
+          : el('button', { class: 'btn btn--primary', onclick: () => openLoginModal() }, [icon('user'), '登录网易云']),
+        el('button', { class: 'btn', onclick: () => importPlaylistByLink() }, [icon('link'), '导入歌单链接']),
         el('button', { class: 'btn', onclick: () => navigate('hall') }, [icon('hall'), '去音乐馆']),
       ],
     }));
-  }
-  // 登录后可再拉一层云端订阅（与本机收藏分开显示，避免用户以为丢数据）
-  if (accountState().loggedIn) {
-    const sec = el('section', { class: 'section' }, [
-      el('div', { class: 'section__head' }, [el('div', { class: 'section__title', html: '网易云订阅 <span class="section__sub">来自账号</span>' })]),
-      skeletonCards(4),
-    ]);
-    out.appendChild(sec);
-    const box = sec.querySelector('.grid') || sec;
-    api.subscribedPlaylists().then((r) => {
-      const list = (r.subscribed || []).map(normalizePlaylist);
-      const grid = el('div', { class: 'grid' });
-      renderPlaylistGrid(grid, list, openPlaylist);
-      const skel = sec.querySelector('.grid');
-      (skel || box).replaceWith(grid);
-      revealIn();
-    }).catch(() => sec.remove());
   }
   revealIn();
 }

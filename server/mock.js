@@ -229,12 +229,19 @@ const routes = {
   // 歌单订阅：离线模式只回状态，不落库（收藏仍会写进本地命名歌单）
   '/playlist/subscribe': async (q) => ({ code: 200, msg: '离线模式：订阅未同步到网易云', t: Number(q.t || 1) }),
 
-  '/playlist/subs': async (q) => {
-    const limit = parseInt(q.limit || '50', 10);
-    const offset = parseInt(q.offset || '0', 10);
-    const list = PLAYLISTS.slice(0, 6).map(playlistToList);
-    return { code: 200, subscribed: list.map((p) => ({ ...p, creator: { userId: 1, nickname: p.creator?.nickname || '孤男音乐' } })), more: false, count: list.length, offset, limit };
+  // 账号下的歌单：subscribed=false 自建，true 收藏自他人（与网易云 /user/playlist 字段一致）
+  '/user/playlist': async (q) => {
+    const limit = parseInt(q.limit || '100', 10);
+    const list = PLAYLISTS.slice(0, limit).map((p, i) => ({
+      ...playlistToList(p),
+      subscribed: i % 3 === 2,
+      creator: { userId: 1, nickname: p.tags?.[0] || '孤男音乐' },
+    }));
+    return { code: 200, playlist: list, more: false };
   },
+
+  // 听歌记录回写：离线没有云端可写，只回成功让本地逻辑走通
+  '/scrobble': async () => ({ code: 200, token: 0, failedShares: [] }),
 };
 
 async function handle(pathname, query) {

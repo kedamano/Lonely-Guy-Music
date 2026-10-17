@@ -78,7 +78,11 @@ export const api = {
   personalizedNewsong: () => request('/personalized/newsong'),
   // 歌单订阅（收藏）：t=1 收藏，t=0 取消；需登录 cookie（由后端注入）
   subscribePlaylist: (id, t = 1) => request('/playlist/subscribe', { id, t }),
-  subscribedPlaylists: (limit = 50, offset = 0) => request('/playlist/subs', { limit, offset }),
+  // 账号下的歌单：subscribed=false 是我创建的，true 是我收藏的别人的。
+  // 早先用 /playlist/subs，该路由在当前 NeteaseCloudMusicApi 版本上是 404，云端区块一直静默空掉。
+  userPlaylists: (uid, limit = 100) => request('/user/playlist', { uid, limit, offset: 0 }),
+  // 听歌记录回写：喂给网易云，云端每日推荐才会跟着本地收听走
+  scrobble: (id, time, sourceid) => request('/scrobble', { id, time, sourceid: sourceid || id }),
 
   // 账号：凭证保存在后端 userData，渲染层只拿到昵称/头像，拿不到 cookie
   accountState: () => dataOf(request('/account/state')),
