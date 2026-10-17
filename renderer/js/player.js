@@ -247,7 +247,7 @@ export class Player {
     return store.get('muted') ? 0.0001 : Math.max(store.get('volume'), 0.0001);
   }
 
-  async _resolveUrl(track, token) {
+  async _resolveUrl(track, token, opts = {}) {
     if (track.source === 'local') return track.url;
     // 多平台曲目：id 是平台原始标识（songmid / hash），网易云官方接口不认识，
     // 只能交给音源脚本取链；失败时直接报错，不做无意义的官方接口回退。
@@ -283,8 +283,9 @@ export class Player {
         });
         if (token !== this._token) return null;
         if (r && r.url) {
-          this.lastResolve = { from: r.from, matched: r.matched || null, bitRate: r.bitRate || 0 };
-          if (r.matched && r.from !== 'kugou-native') {
+          // 预取时不写 lastResolve、不弹「已换源」提示：用户还没播到那首
+          if (!opts.quiet) this.lastResolve = { from: r.from, matched: r.matched || null, bitRate: r.bitRate || 0 };
+          if (!opts.quiet && r.matched && r.from !== 'kugou-native') {
             // 换了来源或版本必须告知：用户点的是原曲，实际播的可能是别的收录版本
             const prefix = r.from === 'kugou-fallback'
               ? `${platform === 'tx' ? 'QQ 音乐' : '该平台'}取链受限，已切换到酷狗同曲`
@@ -392,6 +393,7 @@ export class Player {
     if (this.ctx.state === 'suspended') await this.ctx.resume();
 
     const token = ++this._token;
+    this._cancelPrefetch(); // 上一首的预取到此为止，token 变了它也会自行退出
     this.queue = queue && queue.length ? queue : [track];
     this.index = index != null ? index : this.queue.indexOf(track);
     if (this.index < 0) this.index = 0;
@@ -405,9 +407,18 @@ export class Player {
 
     let url = null;
     let resolveErr = '';
-    try { url = await this._resolveUrl(track, token); }
-    catch (e) { resolveErr = e.message || String(e); url = null; }
-    if (token !== this._token) return;
+    // 预取命中：地址已经在手，直接省掉取链那 1~3 秒
+    const pref = this._pref;
+    if (pref && pref.key === trackKey(track) && Date.now() - pref.at < 20 * 60 * 1000) {
+      url = pref.url;
+      this._pref = null;
+      this.emit('prefetch', { hit: true, key: pref.key });
+    } else {
+      this._pref = null;
+      try { url = await this._resolveUrl(track, token); }
+      catch (e) { resolveErr = e.message || String(e); url = null; }
+      if (token !== this._token) return;
+    }
 
     if (!url) {
       this._failWith(`《${track.name}》暂无可播放源${resolveErr ? '：' + resolveErr : ''}`);
@@ -424,6 +435,8 @@ export class Player {
       if (token !== this._token) return;
       this._fadeIn();
       this.emit('loading', false);
+      // 开播之后才预取下一首，避免和当前这首抢带宽
+      this._schedulePrefetch(token);
       // 恢复上次播放进度（记住播放进度开启时）
       if (store.get('rememberProgress') && track.source !== 'local') {
         const saved = store.getProgress(trackKey(track));
@@ -434,6 +447,65 @@ export class Player {
       }
     } catch (e) {
       this._failWith(`《${track.name}》播放失败：${translateAudioError(this.audio.error, e)}`);
+    }
+  }
+
+  /* ---------- 预取下一首 ----------
+   * 切歌慢有两个来源：取链（平台接口 1~3 秒）和首包（上游 CDN 建连）。
+   * 当前这首开播后，静默解析下一首地址并预拉前 1.5MB：
+   *  - 地址落进 platform-url 的 25 分钟缓存，切歌时直接命中，跳过取链
+   *  - 首段字节让浏览器与 CDN 建立好连接，play() 不再等首包
+   * 代价是每首多约 1.5MB 流量，可在「设置 → 播放设置 → 预取下一首」关掉。
+   */
+  _cancelPrefetch() {
+    if (this._prefTimer) { clearTimeout(this._prefTimer); this._prefTimer = null; }
+    if (this._prefAbort) { try { this._prefAbort.abort(); } catch (_) { /* ignore */ } this._prefAbort = null; }
+  }
+
+  _schedulePrefetch(token) {
+    this._cancelPrefetch();
+    if (!store.get('prefetchNext')) return;
+    // 延迟 3 秒：先让当前这首的首屏与封面吃完带宽，避免开播瞬间卡顿
+    this._prefTimer = setTimeout(() => { this._doPrefetch(token).catch(() => {}); }, 3000);
+  }
+
+  // 下一首下标（与 next() 同规则，但不改队列、不触发播放）
+  _peekNextIndex() {
+    if (this.queue.length < 2) return -1;
+    if (store.get('repeat') === 'one') return -1; // 单曲循环不换歌，预取同一首没意义
+    if (store.get('shuffle')) {
+      let i = this.index;
+      for (let n = 0; n < 8 && i === this.index; n++) i = Math.floor(Math.random() * this.queue.length);
+      return i === this.index ? -1 : i;
+    }
+    let i = this.index + 1;
+    if (i >= this.queue.length) i = store.get('repeat') === 'none' ? -1 : 0;
+    return i === this.index ? -1 : i;
+  }
+
+  async _doPrefetch(token) {
+    const i = this._peekNextIndex();
+    if (i < 0) return;
+    const t = this.queue[i];
+    if (!t || t.source === 'local') return; // 本地文件不需要取链，也没有首包等待
+    const key = trackKey(t);
+    if (this._pref && this._pref.key === key) return; // 已预取过这一首
+
+    const abort = new AbortController();
+    this._prefAbort = abort;
+    try {
+      const url = await this._resolveUrl(t, token, { quiet: true });
+      if (!url || token !== this._token || abort.signal.aborted) return;
+      this._pref = { key, url, at: Date.now() };
+      const res = await fetch(url, { headers: { Range: 'bytes=0-1572863' }, signal: abort.signal });
+      if (res.ok || res.status === 206) {
+        // 把 1.5MB 读干净再丢：既确认这条链接真的可播，也让连接与首包落到本地
+        await res.arrayBuffer();
+      }
+    } catch (_) {
+      // 预取失败不影响正常播放，切歌时会走常规取链
+    } finally {
+      if (this._prefAbort === abort) this._prefAbort = null;
     }
   }
 

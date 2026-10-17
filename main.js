@@ -7,7 +7,7 @@
  *  - 电源阻止（播放防休眠）、任务栏进度条、窗口尺寸预设、下载落盘、桌面歌词窗口
  *  - 首启用户协议确认、主进程日志落盘（userData/logs）、自动更新（打包后）
  */
-const { app, BrowserWindow, Tray, Menu, nativeImage, globalShortcut, ipcMain, dialog, shell, screen, powerSaveBlocker } = require('electron');
+const { app, BrowserWindow, Tray, Menu, nativeImage, globalShortcut, ipcMain, dialog, shell, screen, powerSaveBlocker, session } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const iconMod = require('./assets/icon');
@@ -36,6 +36,18 @@ const WINDOW_SIZES = {
 };
 
 // ---- 单实例锁（必须在启动后端之前）----
+// 显卡驱动异常（GPU 进程反复崩溃导致应用直接退出）时的逃生开关，必须在 ready 之前调用。
+// 仅关掉硬件加速不够：Electron 仍会 fork 独立 GPU 进程，崩的正是它，所以把 GPU 拉进主进程。
+if (process.env.GUMAN_DISABLE_GPU === '1') {
+  app.disableHardwareAcceleration();
+  app.commandLine.appendSwitch('in-process-gpu');
+  app.commandLine.appendSwitch('disable-software-rasterizer');
+}
+// 独立数据目录（多开调试 / 自动化测试用）：必须在申请单实例锁之前设置，
+// 否则两个实例会抢同一个锁文件，后来者直接退出。
+if (process.env.GUMAN_USER_DATA_DIR) {
+  try { app.setPath('userData', process.env.GUMAN_USER_DATA_DIR); } catch (_) { /* 路径非法就退回默认 */ }
+}
 // 若已有实例在跑（含托盘驻留），直接退出：不重复拉起后端、不争抢 Chromium 缓存
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
@@ -435,6 +447,93 @@ ipcMain.handle('shell:openLogDir', async () => {
   }
 });
 
+/* ---------- 磁盘缓存管理 ----------
+ * Chromium 的 HTTP 缓存（封面、字体、接口响应）默认只增不减，长期使用能涨到几百 MB，
+ * 用户在界面上既看不到也清不掉。这里补三件事：体积统计、手动清理、按上限定期自动裁剪。
+ * 只调 session.clearCache()，不动 Cookie / localStorage / IndexedDB，
+ * 所以登录态、歌单、音源配置和下载记录都不受影响。
+ */
+const CACHE_LIMIT_DEFAULT = 512;                                  // MB
+const CACHE_LIMIT_OPTIONS = [0, 256, 512, 1024, 2048];            // 0 = 不限制
+const CACHE_SWEEP_INTERVAL = 10 * 60 * 1000;                      // 每 10 分钟看一次
+const cacheConfigPath = () => path.join(app.getPath('userData'), 'cache-config.json');
+let cacheConfig = { limitMB: CACHE_LIMIT_DEFAULT };
+let cacheSweepTimer = null;
+
+function loadCacheConfig() {
+  try {
+    const raw = JSON.parse(fs.readFileSync(cacheConfigPath(), 'utf8'));
+    const mb = Number(raw && raw.limitMB);
+    if (Number.isFinite(mb) && mb >= 0) cacheConfig.limitMB = mb;
+  } catch (_) { /* 首次运行或文件损坏，用默认值 */ }
+}
+
+function saveCacheConfig() {
+  try {
+    fs.mkdirSync(path.dirname(cacheConfigPath()), { recursive: true });
+    fs.writeFileSync(cacheConfigPath(), JSON.stringify(cacheConfig, null, 2));
+  } catch (e) {
+    mainLog.warn('[cache] 保存配置失败:', e.message);
+  }
+}
+
+async function httpCacheBytes() {
+  try { return await session.defaultSession.getCacheSize(); } catch (_) { return 0; }
+}
+
+async function clearHttpCache() {
+  const before = await httpCacheBytes();
+  try {
+    await session.defaultSession.clearCache();
+  } catch (e) {
+    mainLog.warn('[cache] 清理失败:', e.message);
+  }
+  const after = await httpCacheBytes();
+  return { before, after, freed: Math.max(0, before - after) };
+}
+
+// 超过上限就清空（不做增量淘汰：Chromium 没有暴露按大小裁剪的 API）
+async function sweepCache(reason) {
+  const limitMB = Number(cacheConfig.limitMB) || 0;
+  if (limitMB <= 0) return null;
+  const size = await httpCacheBytes();
+  if (size <= limitMB * 1024 * 1024) return null;
+  const r = await clearHttpCache();
+  mainLog.log(`[cache] ${reason}：${(size / 1048576).toFixed(0)}MB 超过上限 ${limitMB}MB，已清理并释放 ${(r.freed / 1048576).toFixed(0)}MB`);
+  return r;
+}
+
+function startCacheSweep() {
+  loadCacheConfig();
+  if (cacheSweepTimer) clearInterval(cacheSweepTimer);
+  // 启动 90 秒后再检查一次（避开启动时的磁盘争用），之后定时检查
+  setTimeout(() => { sweepCache('启动检查').catch(() => {}); }, 90 * 1000);
+  cacheSweepTimer = setInterval(() => { sweepCache('定期检查').catch(() => {}); }, CACHE_SWEEP_INTERVAL);
+  if (cacheSweepTimer.unref) cacheSweepTimer.unref();
+}
+
+ipcMain.handle('cache:stats', async () => ({
+  bytes: await httpCacheBytes(),
+  limitMB: cacheConfig.limitMB,
+  options: CACHE_LIMIT_OPTIONS,
+  dir: path.join(app.getPath('userData'), 'Cache'),
+}));
+
+ipcMain.handle('cache:clear', async () => {
+  const r = await clearHttpCache();
+  return { freed: r.freed, bytes: r.after };
+});
+
+ipcMain.handle('cache:setLimit', async (_e, mb) => {
+  const n = Number(mb);
+  if (!Number.isFinite(n) || n < 0) return cacheConfig.limitMB;
+  cacheConfig.limitMB = n;
+  saveCacheConfig();
+  // 立刻按新上限裁一次，否则用户调小上限后要等 10 分钟才生效
+  await sweepCache('修改上限').catch(() => {});
+  return cacheConfig.limitMB;
+});
+
 /* ---------- 自动更新（仅打包后；未配置发布地址时检查失败静默跳过） ---------- */
 function setupAutoUpdate() {
   if (!app.isPackaged) return;
@@ -570,6 +669,7 @@ if (gotLock) {
       return;
     }
     registerShortcuts();
+    startCacheSweep();
 
     app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
   });

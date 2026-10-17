@@ -59,6 +59,10 @@ contextBridge.exposeInMainWorld('gm', {
   agree: (ok) => ipcRenderer.invoke('agreement:decide', ok),
   // 打开日志目录（设置页 → 关于）
   openLogDir: () => ipcRenderer.invoke('shell:openLogDir'),
+  // 磁盘缓存（设置页 → 存储）：统计 / 清理 / 设置上限（MB，0 = 不限制）
+  cacheStats: () => ipcRenderer.invoke('cache:stats'),
+  clearCache: () => ipcRenderer.invoke('cache:clear'),
+  setCacheLimit: (mb) => ipcRenderer.invoke('cache:setLimit', mb),
   // 歌词窗口接收主进程转发的当前歌词行
   onLyricLine: (cb) => {
     ipcRenderer.on('lyric:line', (_e, payload) => cb(payload));

@@ -116,6 +116,9 @@ export const api = {
   // 平台原生取链（酷狗匿名直链 / QQ 登录态或跨平台兜底）
   platformUrl: (payload) => post('/platform/url', payload, 30000),
   platformHealth: () => dataOf(request('/platform/health')),
+  // 后端内存缓存（封面 LRU / 取链缓存）：设置页存储区展示与清理
+  cacheStats: () => dataOf(request('/cache/stats')),
+  clearCache: () => post('/cache/clear', {}),
   songUrl: (id) => request('/song/url', { id }),
   lyric: (id) => memo('lyric:' + id, () => request('/lyric', { id }), 10 * 60 * 1000),
   // 歌词译文兜底：key 只存后端，渲染层拿不到

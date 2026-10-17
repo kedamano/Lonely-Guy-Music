@@ -13,6 +13,13 @@ function check(name, ok, detail = '') {
   const page = await browser.newPage({ viewport: { width: 1280, height: 820 } });
   page.on('console', (m) => { if (m.type() === 'error') errors.push('[console] ' + m.text()); });
   page.on('pageerror', (e) => errors.push('[pageerror] ' + e.message));
+  // 预取下一首：整场会话累积「带固定 1.5MB Range 的预热请求」。
+  // 单次播放可能被自动切歌打断（切歌会取消预取），累积判断才稳定。
+  const prefetchReqs = [];
+  page.on('request', (r) => {
+    const h = (r.headers() && r.headers().range) || '';
+    if (/bytes=0-1572863/.test(h)) prefetchReqs.push(r.url());
+  });
   page.on('response', (r) => { if (r.status() >= 400) errors.push(`[http ${r.status()}] ${r.url().slice(0, 120)}`); });
 
   // ---------- 1. 启动与模式徽标 ----------
@@ -201,12 +208,41 @@ function check(name, ok, detail = '') {
   check('快捷电台进入歌单且可见', moodTracks > 0 && moodVis === '1', `${moodTracks} 个歌单, opacity=${moodVis}`);
 
   // ---------- 11. 设置页 + 音源开关 + 网络代理 + 歌词背景 ----------
+  // 存储区依赖 window.gm.cacheStats / clearCache（Electron IPC）。
+  // 浏览器环境注入最小 mock，验证「占用展示 → 立即清理 → 归零」这条链路。
+  await page.evaluate(() => {
+    const gm = window.gm || {};
+    let bytes = 123456789;
+    gm.cacheStats = async () => ({ bytes, limitMB: 512, options: [0, 256, 512, 1024, 2048], dir: '/tmp/cache' });
+    gm.clearCache = async () => { const freed = bytes; bytes = 0; return { freed, bytes: 0 }; };
+    gm.setCacheLimit = async (mb) => mb;
+    window.gm = gm;
+  });
   await page.click('.nav__item[data-route="settings"]');
-  await page.waitForTimeout(600);
+  await page.waitForTimeout(700);
   const selCount = await page.locator('.settings__select').count();
   check('设置页渲染', selCount === 4, `${selCount} 个下拉（音质/歌词背景/语言/歌词显示）`);
   const srcCount = await page.locator('.sourcecard').count();
   check('设置页显示音源区域', (await page.locator('.settings__section').count()) >= 3, `${srcCount} 张音源卡`);
+
+  // 存储区：缓存占用格式化、上限分段、清理后归零
+  const cacheRow = page.locator('.settings__item', { hasText: '缓存占用' });
+  check('设置页有缓存占用行', (await cacheRow.count()) === 1);
+  if ((await cacheRow.count()) === 1) {
+    const shown = await cacheRow.locator('.settings__pathval').textContent();
+    check('缓存占用按 MB 展示', /117\.7 MB/.test(shown), `显示 "${shown}"`);
+    const limitBtns = page.locator('.seg[aria-label="缓存上限"] .seg__btn');
+    check('缓存上限有 5 档', (await limitBtns.count()) === 5, `${await limitBtns.count()} 个`);
+    const activeLimit = await page.locator('.seg[aria-label="缓存上限"] .seg__btn.is-active').textContent().catch(() => '');
+    check('缓存上限当前值高亮', /512/.test(activeLimit), `当前 "${activeLimit}"`);
+
+    await cacheRow.locator('button', { hasText: '立即清理' }).click();
+    await page.waitForTimeout(800);
+    const after = await cacheRow.locator('.settings__pathval').textContent();
+    check('清理后占用归零', /0 B/.test(after), `显示 "${after}"`);
+    const toastTxt = await page.locator('#toast').textContent().catch(() => '');
+    check('清理后提示释放量', /已释放|已清理/.test(toastTxt), `提示 "${toastTxt}"`);
+  }
 
   // 语言切换：简体 → English，界面文案应变换（用 data-key 定位，避免 aria-label 被翻译后失效）
   const langSel = page.locator('.settings__select[data-key="lang"]');
@@ -243,6 +279,13 @@ function check(name, ok, detail = '') {
     check('动画开关切换生效', before !== after, `${before}→${after}`);
     await animToggle.click(); // 还原
     await page.waitForTimeout(300);
+  }
+
+  // 预取下一首：默认开启（切歌提速），可关掉省流量
+  const prefToggle = page.locator('.settings__item', { hasText: '预取下一首' }).locator('input[type="checkbox"]');
+  check('设置页有预取下一首开关', (await prefToggle.count()) === 1);
+  if ((await prefToggle.count()) === 1) {
+    check('预取下一首默认开启', await prefToggle.isChecked());
   }
 
   // 下载开关：控制播放条下载按钮显隐
@@ -365,6 +408,8 @@ function check(name, ok, detail = '') {
     const t = await page.locator('#pbTitle').textContent();
     const c = await page.locator('#curTime').textContent();
     check('播放全部生效', c !== '0:00' && t !== '未选择歌曲', `播放"${t}" ${c}`);
+    for (let n = 0; n < 8 && !prefetchReqs.length; n++) await page.waitForTimeout(1000);
+    check('预取下一首发出预热请求', prefetchReqs.length > 0, `本场会话 ${prefetchReqs.length} 个 1.5MB Range 请求`);
   }
 
   // ---------- 汇总 ----------

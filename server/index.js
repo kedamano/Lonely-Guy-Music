@@ -375,7 +375,7 @@ app.get('/api/local', (req, res) => {
 
 // 这些路径由上方专用路由处理，或由后端自己调用上游，不走通配反代
 const RESERVED = ['/api/__mode', '/api/proxy', '/api/local'];
-const isReserved = (p) => RESERVED.includes(p) || p.startsWith('/api/sources') || p.startsWith('/api/account') || p.startsWith('/api/library') || p.startsWith('/api/platform');
+const isReserved = (p) => RESERVED.includes(p) || p.startsWith('/api/sources') || p.startsWith('/api/account') || p.startsWith('/api/library') || p.startsWith('/api/platform') || p.startsWith('/api/cache');
 // 登录类接口会把 cookie 放进响应体，禁止渲染层直接访问（凭证只能留在后端）
 const BLOCKED = ['/login', '/logout', '/relogin', '/regvalid'];
 
@@ -504,6 +504,24 @@ app.get('/api/proxy', async (req, res) => {
     if (!res.headersSent) res.status(502).end();
     else res.destroy();
   }
+});
+
+/* ---------- 内存缓存统计与清理 ----------
+ * 封面 LRU 与平台取链缓存都只在内存里，重启即消失；但运行久了也会占几十 MB，
+ * 设置页的「清理缓存」顺带清掉，用户不必重启客户端。
+ */
+app.get('/api/cache/stats', (_req, res) => {
+  res.json({
+    code: 0,
+    data: { images: imgCache.size, imageBytes: imgCacheBytes, urls: platformUrl.cacheSize() },
+  });
+});
+
+app.post('/api/cache/clear', (_req, res) => {
+  imgCache.clear();
+  imgCacheBytes = 0;
+  platformUrl.clearCache();
+  res.json({ code: 0, data: { ok: true } });
 });
 
 // 统一错误出口：body-parser 解析失败（非法 JSON / 超过 2mb）默认会返回 HTML 500 并打印堆栈，

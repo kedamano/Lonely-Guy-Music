@@ -16,7 +16,9 @@
     "dist:publish": "npm run icons && electron-builder --win nsis --publish always",
     "check:platform": "node scripts/platform-url-check.js",
     "check:tray": "electron scripts/tray-check.js",
-    "check:version": "node scripts/version-check.js"
+    "check:version": "node scripts/version-check.js",
+    "check:cache": "electron scripts/cache-check.js",
+    "check:cache:e2e": "node scripts/cache-e2e.js"
   },
   "dependencies": {
     "cors": "^2.8.5",

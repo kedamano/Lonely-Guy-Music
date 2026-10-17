@@ -46,6 +46,8 @@ const ZH_TW = {
   // 设置
   基本设置: '基本設定', 播放设置: '播放設定', 播放详情页设置: '播放詳情頁設定', 桌面歌词: '桌面歌詞',
   列表设置: '清單設定', 下载设置: '下載設定', 网络代理: '網路代理', 自定义源管理: '自訂源管理',
+  存储: '儲存', 缓存占用: '快取佔用', 缓存上限: '快取上限', 立即清理: '立即清理', 不限制: '不限制',
+  预取下一首: '預取下一首', 正在读取缓存占用: '正在讀取快取佔用…',
   播放与快捷键: '播放與快速鍵', 关于: '關於', 音乐来源: '音樂來源', 默认音质: '預設音質',
   歌词页背景: '歌詞頁背景', 封面模糊: '封面模糊', 封面主色: '封面主色', 应用背景: '應用背景',
   主题颜色: '主題顏色', 信号琥珀: '訊號琥珀', 霓虹紫: '霓虹紫', 电子青: '電子青', 玫红: '玫紅',
@@ -257,6 +259,12 @@ const ZH_TW = {
   播放期间系统不会进入睡眠: '播放期間系統不會進入睡眠',
   再次播放同一首歌时恢复到上次位置: '再次播放同一首歌時恢復到上次位置',
   取链或播放失败时自动播放下一首: '取鏈或播放失敗時自動播放下一首',
+  '提前解析下一首的播放地址并预载前 1.5MB，切歌几乎立刻出声；每首多消耗约 1.5MB 流量，流量敏感时关掉':
+    '提前解析下一首的播放位址並預載前 1.5MB，切歌幾乎立刻出聲；每首多消耗約 1.5MB 流量，流量敏感時關掉',
+  '封面、字体与接口响应会缓存在本地，加快二次加载。清理只删缓存，不影响登录状态、歌单、下载与音源配置。':
+    '封面、字型與介面回應會快取在本機，加快二次載入。清理只刪快取，不影響登入狀態、歌單、下載與音源設定。',
+  '超过上限时自动清理，避免只增不减；选「不限制」则只在手动清理时释放':
+    '超過上限時自動清理，避免只增不減；選「不限制」則只在手動清理時釋放',
   已播放的歌词逐字高亮: '已播放的歌詞逐字高亮',
   'Windows 任务栏图标显示播放进度': 'Windows 工作列圖示顯示播放進度',
   "当前歌词行放大，其余行淡出": '目前歌詞行放大，其餘行淡出',
@@ -353,6 +361,8 @@ const EN = {
   // 设置
   基本设置: 'General', 播放设置: 'Playback', 播放详情页设置: 'Now Playing Page', 桌面歌词: 'Desktop Lyrics',
   列表设置: 'Lists', 下载设置: 'Downloads', 网络代理: 'Network Proxy', 自定义源管理: 'Custom Sources',
+  存储: 'Storage', 缓存占用: 'Cache Size', 缓存上限: 'Cache Limit', 立即清理: 'Clear Now', 不限制: 'Unlimited',
+  预取下一首: 'Prefetch Next Track', 正在读取缓存占用: 'Reading cache usage…',
   播放与快捷键: 'Playback & Shortcuts', 关于: 'About', 音乐来源: 'Music Source', 默认音质: 'Default Quality',
   歌词页背景: 'Lyric Background', 封面模糊: 'Cover Blur', 封面主色: 'Cover Color', 应用背景: 'App Background',
   主题颜色: 'Theme Color', 信号琥珀: 'Amber', 霓虹紫: 'Violet', 电子青: 'Cyan', 玫红: 'Rose',
@@ -548,6 +558,12 @@ const EN = {
   播放期间系统不会进入睡眠: 'Keep the system awake while playing',
   再次播放同一首歌时恢复到上次位置: 'Restore the last position when a track plays again',
   取链或播放失败时自动播放下一首: 'Skip to the next track when linking or playback fails',
+  '提前解析下一首的播放地址并预载前 1.5MB，切歌几乎立刻出声；每首多消耗约 1.5MB 流量，流量敏感时关掉':
+    'Resolves the next track and preloads its first 1.5MB so switching is near-instant. Costs about 1.5MB extra traffic per track — turn off on metered connections.',
+  '封面、字体与接口响应会缓存在本地，加快二次加载。清理只删缓存，不影响登录状态、歌单、下载与音源配置。':
+    'Covers, fonts and API responses are cached locally to speed up reloads. Clearing only removes the cache — sign-in, playlists, downloads and source settings stay untouched.',
+  '超过上限时自动清理，避免只增不减；选「不限制」则只在手动清理时释放':
+    'Clears automatically once the limit is exceeded; with Unlimited the cache only shrinks when you clear it manually',
   已播放的歌词逐字高亮: 'Highlight played lyrics word by word',
   'Windows 任务栏图标显示播放进度': 'Show playback progress on the Windows taskbar icon',
   点击播放条封面打开的歌词大页: 'The full-screen lyrics page opened from the player bar cover',

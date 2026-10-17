@@ -326,6 +326,7 @@ export class SettingsView {
     this.toggleRow(play, { key: 'preventSleep', label: '播放歌曲时阻止电脑休眠', desc: '播放期间系统不会进入睡眠' });
     this.toggleRow(play, { key: 'rememberProgress', label: '记住播放进度', desc: '再次播放同一首歌时恢复到上次位置' });
     this.toggleRow(play, { key: 'errorAutoNext', label: '播放错误时自动切换歌曲', desc: '取链或播放失败时自动播放下一首' });
+    this.toggleRow(play, { key: 'prefetchNext', label: '预取下一首', desc: '提前解析下一首的播放地址并预载前 1.5MB，切歌几乎立刻出声；每首多消耗约 1.5MB 流量，流量敏感时关掉' });
     this.toggleRow(play, { key: 'karaokeLyric', label: '使用卡拉OK样式歌词播放', desc: '已播放的歌词逐字高亮' });
     this.toggleRow(play, { key: 'taskbarProgress', label: '在任务栏上显示当前歌曲播放进度', desc: 'Windows 任务栏图标显示播放进度' });
     wrap.appendChild(play);
@@ -430,6 +431,31 @@ export class SettingsView {
     this.segRow(down, { key: 'downloadNaming', label: '文件命名方式', options: NAMINGS });
     wrap.appendChild(down);
 
+    /* ---------- 存储（磁盘缓存） ---------- */
+    const storeSec = this.section('存储', '封面、字体与接口响应会缓存在本地，加快二次加载。清理只删缓存，不影响登录状态、歌单、下载与音源配置。');
+    this.cacheVal = el('div', { class: 'settings__pathval', text: '统计中…' });
+    this.cacheNote = el('div', { class: 'settings__item-desc', text: '正在读取缓存占用…' });
+    const cacheRow = el('div', { class: 'settings__item' });
+    cacheRow.appendChild(el('div', { class: 'settings__item-main' }, [
+      el('span', { class: 'settings__item-label', text: '缓存占用' }),
+      this.cacheNote,
+    ]));
+    const cacheRefresh = el('button', { class: 'btn btn--small', onclick: () => this.refreshCache() }, [icon('refresh'), '刷新']);
+    const cacheClear = el('button', { class: 'btn btn--small btn--primary', onclick: () => this.onClearCache() }, [icon('trash'), '立即清理']);
+    cacheRow.append(el('div', { class: 'settings__item-ctrl' }, [this.cacheVal, cacheRefresh, cacheClear]));
+    storeSec.appendChild(cacheRow);
+
+    // 上限存在主进程 cache-config.json（渲染层 localStorage 主进程读不到）
+    const limitRow = el('div', { class: 'settings__item' });
+    limitRow.appendChild(el('div', { class: 'settings__item-main' }, [
+      el('span', { class: 'settings__item-label', text: '缓存上限' }),
+      el('div', { class: 'settings__item-desc', text: '超过上限时自动清理，避免只增不减；选「不限制」则只在手动清理时释放' }),
+    ]));
+    this.cacheSeg = el('div', { class: 'seg', role: 'group', 'aria-label': '缓存上限' });
+    limitRow.appendChild(this.cacheSeg);
+    storeSec.appendChild(limitRow);
+    wrap.appendChild(storeSec);
+
     /* ---------- 网络代理（用户自定义，默认不走代理） ---------- */
     const proxySec = this.section('网络代理', '音源的网络请求默认直连，不读取系统代理。仅当你的网络必须通过代理才能访问音源接口时，才需要填写；保存后立即生效，无需重启。');
     const proxyRow = el('div', { class: 'settings__addrow' });
@@ -500,6 +526,72 @@ export class SettingsView {
     this.container.appendChild(wrap);
   }
 
+  /* ---------- 存储：磁盘缓存 ---------- */
+  async refreshCache() {
+    if (!(window.gm && window.gm.cacheStats)) {
+      if (this.cacheVal) this.cacheVal.textContent = '不可用';
+      if (this.cacheNote) this.cacheNote.textContent = '当前环境不支持缓存统计（仅桌面客户端可用）';
+      return;
+    }
+    try {
+      const s = await window.gm.cacheStats();
+      this.cacheLimit = s.limitMB;
+      if (this.cacheVal) this.cacheVal.textContent = fmtBytes(s.bytes);
+      let extra = '';
+      try {
+        const m = await api.cacheStats();
+        if (m) extra = `；内存缓存 ${m.images || 0} 张封面 / ${m.urls || 0} 条取链`;
+      } catch (_) { /* 后端不可用时只显示磁盘部分 */ }
+      if (this.cacheNote) {
+        this.cacheNote.textContent = `上限 ${s.limitMB ? fmtBytes(s.limitMB * 1048576) : '不限制'}${extra}`;
+      }
+      this.renderCacheLimit(s.options || [], s.limitMB);
+    } catch (e) {
+      if (this.cacheVal) this.cacheVal.textContent = '统计失败';
+      if (this.cacheNote) this.cacheNote.textContent = e.message || '无法读取缓存占用';
+    }
+  }
+
+  // 上限按钮只在「选项或当前值变化」时重建，刷新占用不会闪一下
+  renderCacheLimit(options, cur) {
+    if (!this.cacheSeg) return;
+    const sig = options.join(',') + '|' + cur;
+    if (this.cacheSeg.__sig === sig) return;
+    this.cacheSeg.__sig = sig;
+    this.cacheSeg.innerHTML = '';
+    options.forEach((mb) => {
+      const b = el('button', {
+        class: 'seg__btn' + (mb === cur ? ' is-active' : ''),
+        text: mb ? fmtBytes(mb * 1048576) : '不限制',
+      });
+      b.addEventListener('click', async () => {
+        try {
+          await window.gm.setCacheLimit(mb);
+          this.cacheSeg.querySelectorAll('.seg__btn').forEach((x) => x.classList.toggle('is-active', x === b));
+          this.onToast(mb ? `缓存上限已设为 ${fmtBytes(mb * 1048576)}` : '已取消缓存上限');
+          await this.refreshCache();
+        } catch (e) {
+          this.onToast('设置失败：' + e.message);
+        }
+      });
+      this.cacheSeg.appendChild(b);
+    });
+  }
+
+  async onClearCache() {
+    if (!(window.gm && window.gm.clearCache)) return;
+    this.onToast('正在清理缓存…');
+    try {
+      const r = await window.gm.clearCache();
+      // 后端的内存缓存（封面 LRU / 取链）也一并清掉，否则「清理」看起来没效果
+      try { await api.clearCache(); } catch (_) { /* 后端不可用不影响磁盘清理 */ }
+      await this.refreshCache();
+      this.onToast(r && r.freed > 0 ? `已释放 ${fmtBytes(r.freed)}` : '缓存已清理');
+    } catch (e) {
+      this.onToast('清理失败：' + e.message);
+    }
+  }
+
   async load() {
     try {
       const { list, config } = await api.sources();
@@ -510,6 +602,8 @@ export class SettingsView {
       if (this.proxyInput) this.proxyInput.value = this.config.proxy || '';
       this.renderProxyStatus();
       this.renderSources();
+      // 缓存占用单独拉，失败不影响音源区块
+      this.refreshCache();
     } catch (e) {
       this.sourceList.innerHTML = '';
       this.sourceList.appendChild(emptyState({
@@ -519,8 +613,7 @@ export class SettingsView {
     }
   }
 
-  renderTranslateStatus() {
-    if (!this.trStatus) return;
+  renderTranslateStatus() {    if (!this.trStatus) return;
     const c = this.translateCfg;
     this.trStatus.textContent = c && c.configured
       ? `当前状态：已配置 ${c.model}（密钥只保存在本机用户目录，不会下发到界面）`
@@ -739,6 +832,15 @@ export class SettingsView {
       this.onToast('删除失败：' + e.message);
     }
   }
+}
+
+// 字节数 → 易读文本（存储区展示缓存占用）
+function fmtBytes(n) {
+  const v = Math.max(0, Number(n) || 0);
+  if (v < 1024) return `${v} B`;
+  if (v < 1048576) return `${(v / 1024).toFixed(0)} KB`;
+  if (v < 1073741824) return `${(v / 1048576).toFixed(1)} MB`;
+  return `${(v / 1073741824).toFixed(2)} GB`;
 }
 
 // 颜色输入框只接受 #rrggbb；设置里可能存了 rgba()，统一转 hex

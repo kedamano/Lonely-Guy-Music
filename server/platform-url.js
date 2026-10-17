@@ -424,12 +424,18 @@ function clearCache() {
   cache.clear();
 }
 
+/** 当前取链缓存条目数（设置页展示「内存缓存」用） */
+function cacheSize() {
+  return cache.size;
+}
+
 module.exports = {
   resolvePlatformUrl,
   fallbackToKugou,
   kugouBestEffort,
   getHealth,
   clearCache,
+  cacheSize,
   setAuthPath,
   __test: { similarity, normName, kugouByHash },
 };

@@ -10,7 +10,7 @@ NetEase online library · LX Music custom sources · Live spectrum · Karaoke ly
 
 [![Version](https://img.shields.io/badge/version-1.2.3-ff6a2c?style=flat-square)](https://github.com/kedamano/Lonely-Guy-Music/releases)
 [![Electron](https://img.shields.io/badge/Electron-44-47848F?style=flat-square&logo=electron&logoColor=white)](https://www.electronjs.org/)
-[![Tests](https://img.shields.io/badge/tests-184%20checks-passing-3fb950?style=flat-square)](#-ui-regression-tests)
+[![Tests](https://img.shields.io/badge/tests-200%20checks-passing-3fb950?style=flat-square)](#-ui-regression-tests)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-8957e5?style=flat-square)](https://github.com/kedamano/Lonely-Guy-Music/releases)
 [![License](https://img.shields.io/badge/license-MIT-c9d1d9?style=flat-square)](LICENSE)
 
@@ -272,17 +272,19 @@ When a fallback or an alternate recording is used, the UI says so explicitly; tr
 
 ## 🧪 UI Regression Tests
 
-Playwright-based real-interaction regression (**184 assertions** total):
+Playwright-based real-interaction regression (**200 assertions** total):
 
 ```bash
 npm start                        # or ENABLE_NCM=0 node server/index.js
 node scripts/ui-check.js         # 65 interaction checks + screenshots
-node scripts/ui-smoke.js         # 64 full smoke checks (covers/pagination/settings/i18n…)
+node scripts/ui-smoke.js         # 73 full smoke checks (covers/pagination/settings/i18n/cache/prefetch…)
 node scripts/proxy-check.js      # 12 proxy mechanism unit tests
 node scripts/search-guide-check.js # 19 search-guide & i18n checks
 node scripts/platform-url-check.js # 14 platform resolution (scoring + Kugou link + QQ fallback)
 node scripts/version-check.js     # 5 version-string contract checks
 npx electron scripts/tray-check.js # 5 tray icon checks (ICO empty-image regression + real bounds)
+npx electron scripts/cache-check.js # 7 disk-cache checks (write → measure → clear → idempotent)
+node scripts/cache-e2e.js         # 7 on-device storage checks (needs a GUI, full IPC path)
 ```
 
 Covers: live search / tab switching / playback / seek dragging / favorites / queue / lyrics overlay / soundstage EQ & sleep / local audio import & playback / mini mode / responsive layout / every settings section / real cover-load assertions / runtime console error checks. Screenshots go to `scripts/shots/`.
@@ -319,6 +321,18 @@ Upstream sources are maintained by third parties and can go offline. The app ski
 <summary><b>SmartScreen blocks the installer?</b></summary>
 
 The installer is not code-signed yet. Click "More info → Run anyway".
+</details>
+
+<details>
+<summary><b>How much disk does the cache take? Can I clear it?</b></summary>
+
+Settings → Storage shows the disk cache size (covers, fonts, API responses) with a one-click clear, plus a limit (256MB / 512MB / 1GB / 2GB / unlimited) that is enforced automatically in the background. Clearing only removes the HTTP cache — sign-in, playlists, downloads and source settings stay untouched.
+</details>
+
+<details>
+<summary><b>App crashes on launch / black window?</b></summary>
+
+A few GPU drivers make Electron's GPU process crash repeatedly (`GPU process isn't usable`). Launch with `GUMAN_DISABLE_GPU=1` to run the GPU in-process; UI and playback are unaffected.
 </details>
 
 <details>

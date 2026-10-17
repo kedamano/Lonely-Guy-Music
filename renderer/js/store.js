@@ -34,6 +34,7 @@ const DEFAULTS = {
   preventSleep: true,     // 播放歌曲时阻止电脑休眠
   rememberProgress: true, // 记住播放进度
   errorAutoNext: true,    // 播放错误时自动切换歌曲
+  prefetchNext: true,     // 预取下一首（地址 + 首段字节），切歌更快但多耗一点流量
   karaokeLyric: false,    // 使用卡拉OK样式歌词播放
   taskbarProgress: true,  // 在任务栏上显示当前歌曲播放进度
 

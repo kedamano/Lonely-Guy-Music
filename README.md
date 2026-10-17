@@ -10,7 +10,7 @@
 
 [![Version](https://img.shields.io/badge/version-1.2.3-ff6a2c?style=flat-square)](https://github.com/kedamano/Lonely-Guy-Music/releases)
 [![Electron](https://img.shields.io/badge/Electron-44-47848F?style=flat-square&logo=electron&logoColor=white)](https://www.electronjs.org/)
-[![Tests](https://img.shields.io/badge/tests-184%20checks-passing-3fb950?style=flat-square)](#-ui-回归测试)
+[![Tests](https://img.shields.io/badge/tests-200%20checks-passing-3fb950?style=flat-square)](#-ui-回归测试)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-8957e5?style=flat-square)](https://github.com/kedamano/Lonely-Guy-Music/releases)
 [![License](https://img.shields.io/badge/license-MIT-c9d1d9?style=flat-square)](LICENSE)
 [![i18n](https://img.shields.io/badge/语言-简体%20%7C%20繁體%20%7C%20EN-ff6a2c?style=flat-square)](#-界面语言)
@@ -95,6 +95,8 @@
 | 🌐 三语言界面 | 简体中文 / 繁體中文 / English，切换即时生效 |
 | 🎭 4 套强调色 | 信号琥珀 / 霓虹紫 / 电子青 / 玫红，全站色彩由 CSS `color-mix` 派生，切换无死角 |
 | 🪶 性能友好 | 6 档字号、4 档窗口尺寸、动画可关（低性能设备更流畅） |
+| 💾 存储管理 | 设置页显示磁盘缓存占用，一键清理；超上限（256MB～2GB / 不限）自动裁剪，**只删缓存不动登录与音源配置** |
+| ⚡ 预取下一首 | 开播 3 秒后静默解析下一首并预载前 1.5MB，切歌几乎立刻出声；每首多约 1.5MB 流量，可一键关闭 |
 
 ### 🛡 可靠性细节
 
@@ -301,17 +303,19 @@ QQ / 酷狗曲目的播放地址不走网易云，也不强依赖音源脚本，
 
 ## 🧪 UI 回归测试
 
-基于 Playwright 的真实交互回归（共 **184 项断言**）：
+基于 Playwright 的真实交互回归（共 **200 项断言**）：
 
 ```bash
 npm start                        # 或 ENABLE_NCM=0 node server/index.js
 node scripts/ui-check.js         # 65 项交互检查 + 截图
-node scripts/ui-smoke.js         # 64 项全量冒烟（封面加载/分页/设置/语言切换…）
+node scripts/ui-smoke.js         # 73 项全量冒烟（封面加载/分页/设置/语言切换/缓存/预取…）
 node scripts/proxy-check.js      # 12 项代理机制单测
 node scripts/search-guide-check.js # 19 项搜索引导与多语言检查
 node scripts/platform-url-check.js # 14 项多平台取链（匹配打分 + 酷狗直链 + QQ 兜底）
 node scripts/version-check.js     # 5 项版本号契约（主进程/渲染层不重复加 v）
 npx electron scripts/tray-check.js # 5 项托盘图标（ICO 空图回归 + 真实托盘坐标）
+npx electron scripts/cache-check.js # 7 项磁盘缓存（写入 → 统计 → 清理 → 幂等）
+node scripts/cache-e2e.js         # 7 项真机存储区验证（需图形界面，走完整 IPC）
 ```
 
 覆盖范围：实时搜索 / 切 tab / 播放 / 拖拽进度 / 收藏 / 队列 / 歌词浮层 / 声场 EQ 与睡眠 / 本地音频导入播放 / 迷你模式 / 响应式布局 / 全部设置分区 / 封面真实加载断言 / 运行时 console 错误检查。截图输出到 `scripts/shots/`。
@@ -349,6 +353,18 @@ npx electron scripts/tray-check.js # 5 项托盘图标（ICO 空图回归 + 真�
 <summary><b>为什么装完打不开 / SmartScreen 拦截？</b></summary>
 
 安装包未做代码签名。SmartScreen 提示时点击「更多信息 → 仍要运行」即可。
+</details>
+
+<details>
+<summary><b>缓存占了多少空间？能清吗？</b></summary>
+
+「设置 → 存储」会显示磁盘缓存占用（封面、字体、接口响应），可一键清理，也可设上限（256MB / 512MB / 1GB / 2GB / 不限）——超过上限会在后台自动裁剪。清理**只删 HTTP 缓存**，不动登录状态、歌单、下载文件与音源配置。
+</details>
+
+<details>
+<summary><b>启动后闪退 / 界面全黑？</b></summary>
+
+极少数显卡驱动会让 Electron 的 GPU 进程反复崩溃（日志里是 `GPU process isn't usable`）。用环境变量 `GUMAN_DISABLE_GPU=1` 启动可绕过（把 GPU 拉进主进程），界面与播放功能不受影响。
 </details>
 
 <details>
