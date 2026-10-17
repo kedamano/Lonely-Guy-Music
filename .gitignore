@@ -1,0 +1,14 @@
+# 依赖与构建产物
+node_modules/
+
+# 运行时数据：登录 cookie、音源脚本、本地曲库清单（含绝对路径），绝不入库
+userData/
+.tmp_userdata/
+
+# 编辑器与第三方会话数据
+.idea/
+.workbuddy/
+
+# 日志与临时文件
+*.log
+*.tmp

@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>孤男音乐 · 桌面声场</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%230d0c0a'/%3E%3Ccircle cx='32' cy='32' r='14' fill='%23ff6a2c'/%3E%3Ccircle cx='32' cy='32' r='6' fill='%230d0c0a'/%3E%3C/svg%3E" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Anton&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&family=Noto+Sans+SC:wght@400;500;700;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <!-- 图标精灵：统一线性图标，全部使用 currentColor -->
+  <svg class="svg-sprite" aria-hidden="true" focusable="false">
+    <symbol id="i-min" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+    <symbol id="i-max" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="2"/></symbol>
+    <symbol id="i-restore" viewBox="0 0 24 24"><rect x="8" y="4" width="12" height="12" rx="2"/><path d="M16 16v2a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h2"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+    <symbol id="i-mini" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><rect x="12" y="12" width="6" height="5" rx="1" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-discover" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 5-5 2 2-5z"/></symbol>
+    <symbol id="i-hall" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
+    <symbol id="i-local" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+    <symbol id="i-heart" viewBox="0 0 24 24"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.29 1.51 4.04 3 5.5l7 7Z"/></symbol>
+    <symbol id="i-heart-fill" viewBox="0 0 24 24"><path fill="currentColor" stroke="none" d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.29 1.51 4.04 3 5.5l7 7Z"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></symbol>
+    <symbol id="i-stage" viewBox="0 0 24 24"><path d="M4 10v4M8 7v10M12 4v16M16 7v10M20 10v4"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5.5v13l11-6.5z" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24"><rect x="7" y="5" width="3.5" height="14" rx="1" fill="currentColor" stroke="none"/><rect x="13.5" y="5" width="3.5" height="14" rx="1" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-prev" viewBox="0 0 24 24"><path d="M19 5 9 12l10 7z" fill="currentColor" stroke="none"/><rect x="5" y="5" width="2.5" height="14" rx="1" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-next" viewBox="0 0 24 24"><path d="M5 5l10 7-10 7z" fill="currentColor" stroke="none"/><rect x="16.5" y="5" width="2.5" height="14" rx="1" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-shuffle" viewBox="0 0 24 24"><path d="M2 18h1.4c1.3 0 2.5-.6 3.3-1.7l6.1-8.6c.8-1.1 2-1.7 3.3-1.7H22"/><path d="m18 2 4 4-4 4"/><path d="M2 6h1.9c1.5 0 2.9.9 3.6 2.2"/><path d="M22 18h-5.9c-1.4 0-2.6-.7-3.4-1.8l-.6-.9"/><path d="m18 14 4 4-4 4"/></symbol>
+    <symbol id="i-repeat" viewBox="0 0 24 24"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></symbol>
+    <symbol id="i-repeat-one" viewBox="0 0 24 24"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/><text x="12" y="15.5" text-anchor="middle" font-size="7.5" font-family="sans-serif" font-weight="700" fill="currentColor" stroke="none">1</text></symbol>
+    <symbol id="i-volume" viewBox="0 0 24 24"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></symbol>
+    <symbol id="i-volume-1" viewBox="0 0 24 24"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/></symbol>
+    <symbol id="i-volume-x" viewBox="0 0 24 24"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="m16 9 5 5M21 9l-5 5"/></symbol>
+    <symbol id="i-lyric" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></symbol>
+    <symbol id="i-queue" viewBox="0 0 24 24"><path d="M4 6h11M4 11h11M4 16h7"/><path d="M18 19V8l3-1"/><circle cx="16" cy="19" r="2"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6 7l1 13h10l1-13M10 11v5M14 11v5"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+    <symbol id="i-chevron-left" viewBox="0 0 24 24"><path d="m15 5-7 7 7 7"/></symbol>
+    <symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="m5 9 7 7 7-7"/></symbol>
+    <symbol id="i-music" viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></symbol>
+    <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.5.5l2-2a5 5 0 0 0-7-7l-1.1 1"/><path d="M14 11a5 5 0 0 0-7.5-.5l-2 2a5 5 0 0 0 7 7l1.1-1"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M20 15v3a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-3"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.6-6.3"/><path d="M21 4v5h-5"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+    <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 16l.9 2.1L22 19l-2.1.9L19 22l-.9-2.1L16 19l2.1-.9z"/></symbol>
+    <symbol id="i-folder-plus" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M12 11v4M10 13h4"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3 2.5 20h19z"/><path d="M12 9v5M12 17.5v.5"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5"/><path d="M20 15v3a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-3"/></symbol>
+    <symbol id="i-desktop" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M8 20h8M12 16v4"/></symbol>
+    <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/></symbol>
+    <symbol id="i-sheet" viewBox="0 0 24 24"><path d="M4 6h11M4 11h11M4 16h7"/><path d="M18 10v8M14 14h8"/></symbol>
+    <symbol id="i-vip" viewBox="0 0 24 24"><path d="M3 8l4 3 5-6 5 6 4-3-2 11H5z"/><path d="M5 19h14"/></symbol>
+  </svg>
+
+  <!-- 自定义标题栏（无边框窗口） -->
+  <header class="titlebar" id="titlebar">
+    <div class="titlebar__drag" id="titlebarDrag"></div>
+    <div class="titlebar__brand">
+      <button class="brand-btn" id="brandBtn" title="回到发现">
+        <span class="brand-mark"></span>
+        <span class="brand-name">孤男音乐</span>
+      </button>
+      <span class="brand-sub" id="apiMode">离线示例</span>
+    </div>
+    <button class="titlebar__np" id="titleNp" title="打开正在播放">未在播放</button>
+    <div class="titlebar__controls">
+      <button class="winbtn" id="btnMini" data-icon="mini" title="迷你模式" aria-label="迷你模式"></button>
+      <button class="winbtn" id="btnMin" data-icon="min" title="最小化" aria-label="最小化"></button>
+      <button class="winbtn" id="btnMax" data-icon="max" title="最大化" aria-label="最大化"></button>
+      <button class="winbtn winbtn--close" id="btnClose" data-icon="close" title="关闭" aria-label="关闭"></button>
+    </div>
+  </header>
+
+  <div class="app" id="app">
+    <!-- 侧边栏 -->
+    <aside class="sidebar">
+      <!-- 账号：凭证保存在后端，这里只展示昵称/头像；未登录时是登录入口 -->
+      <div class="account" id="accountBox">
+        <button class="account__btn" id="accountBtn" title="登录网易云账号">
+          <span class="account__avatar" id="accountAvatar" data-icon="user"></span>
+          <span class="account__txt">
+            <span class="account__name" id="accountName">未登录</span>
+            <span class="account__sub" id="accountSub">登录后同步每日推荐</span>
+          </span>
+        </button>
+      </div>
+      <nav class="nav" id="nav">
+        <button class="nav__item is-active" data-route="discover"><span class="nav__ico" data-icon="discover"></span><span class="nav__txt">发现</span></button>
+        <button class="nav__item" data-route="hall"><span class="nav__ico" data-icon="hall"></span><span class="nav__txt">音乐馆</span></button>
+        <button class="nav__item" data-route="search"><span class="nav__ico" data-icon="search"></span><span class="nav__txt">搜索</span></button>
+        <button class="nav__item" data-route="local"><span class="nav__ico" data-icon="local"></span><span class="nav__txt">本地音乐</span></button>
+        <button class="nav__item" data-route="mine"><span class="nav__ico" data-icon="heart"></span><span class="nav__txt">我的</span></button>
+        <button class="nav__item" data-route="settings"><span class="nav__ico" data-icon="settings"></span><span class="nav__txt">设置</span></button>
+      </nav>
+      <div class="sidebar__section">
+        <div class="sidebar__label">快捷电台</div>
+        <button class="pill" data-mood="治愈"><span class="pill__dot"></span>治愈电台</button>
+        <button class="pill" data-mood="摇滚"><span class="pill__dot"></span>摇滚能量</button>
+        <button class="pill" data-mood="深夜"><span class="pill__dot"></span>深夜 Emo</button>
+        <button class="pill" data-mood="通勤"><span class="pill__dot"></span>通勤回血</button>
+      </div>
+      <div class="sidebar__foot">
+        <button class="ghostbtn" id="btnStage" title="声场面板"><span data-icon="stage"></span><span>声场</span></button>
+      </div>
+    </aside>
+
+    <!-- 主视图 -->
+    <main class="main" id="view" tabindex="0"></main>
+
+    <!-- 右侧声场面板 -->
+    <section class="stage" id="stage" aria-hidden="true">
+      <div class="stage__head">
+        <h2>声场</h2>
+        <button class="iconbtn" id="stageClose" data-icon="close" aria-label="关闭声场"></button>
+      </div>
+      <div class="stage__viz">
+        <canvas id="viz"></canvas>
+        <div class="stage__vizlabel">实时频谱 · LIVE</div>
+      </div>
+      <div class="stage__block">
+        <div class="stage__title">图形均衡器 <span class="muted" id="eqPresetName">扁平</span></div>
+        <div class="eq" id="eq"></div>
+        <div class="eq__presets" id="eqPresets"></div>
+      </div>
+      <div class="stage__block">
+        <div class="stage__title">睡眠定时 <span class="muted" id="sleepBadge"></span></div>
+        <div class="timerow" id="sleepRow">
+          <button class="chip" data-min="0">关</button>
+          <button class="chip" data-min="15">15′</button>
+          <button class="chip" data-min="30">30′</button>
+          <button class="chip" data-min="45">45′</button>
+          <button class="chip" data-min="60">60′</button>
+        </div>
+        <div class="muted" id="sleepStatus">播放结束淡出关闭</div>
+      </div>
+      <div class="stage__block">
+        <div class="stage__title">外观</div>
+        <div class="swatches" id="accents">
+          <button class="swatch" data-accent="amber" style="--s:#ff6a2c" title="信号琥珀"></button>
+          <button class="swatch" data-accent="violet" style="--s:#6c5ce7" title="霓虹紫"></button>
+          <button class="swatch" data-accent="cyan" style="--s:#19d3da" title="电子青"></button>
+          <button class="swatch" data-accent="rose" style="--s:#ff4d6d" title="玫红"></button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- 播放队列抽屉 -->
+  <div class="drawer-backdrop" id="queueBackdrop"></div>
+  <aside class="queue-panel" id="queuePanel" aria-hidden="true">
+    <div class="queue-panel__head">
+      <div>
+        <div class="kicker">QUEUE</div>
+        <h3>播放队列</h3>
+      </div>
+      <div class="queue-panel__actions">
+        <button class="btn btn--small" id="queueClear">清空</button>
+        <button class="iconbtn" id="queueClose" data-icon="close" aria-label="关闭队列"></button>
+      </div>
+    </div>
+    <div class="queue-panel__body" id="queueList"></div>
+  </aside>
+
+  <!-- 底部播放条 -->
+  <footer class="playerbar" id="playerbar">
+    <div class="pb__track">
+      <button class="pb__cover" id="pbCover" aria-label="打开正在播放"></button>
+      <div class="pb__meta">
+        <div class="pb__title" id="pbTitle">未选择歌曲</div>
+        <div class="pb__artist" id="pbArtist">—</div>
+      </div>
+      <button class="iconbtn" id="btnFav" data-icon="heart" title="收藏" aria-label="收藏"></button>
+    </div>
+    <div class="pb__center">
+      <div class="pb__controls">
+        <button class="iconbtn" id="btnShuffle" data-icon="shuffle" title="随机播放" aria-label="随机播放"></button>
+        <button class="iconbtn" id="btnPrev" data-icon="prev" title="上一首" aria-label="上一首"></button>
+        <button class="playbtn" id="btnPlay" data-icon="play" title="播放/暂停" aria-label="播放或暂停"></button>
+        <button class="iconbtn" id="btnNext" data-icon="next" title="下一首" aria-label="下一首"></button>
+        <button class="iconbtn" id="btnRepeat" data-icon="repeat" title="列表循环" aria-label="循环模式"></button>
+      </div>
+      <div class="pb__progress">
+        <span class="time" id="curTime">0:00</span>
+        <div class="seek" id="seek" role="slider" aria-label="播放进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" tabindex="0"><div class="seek__fill" id="seekFill"></div><div class="seek__knob" id="seekKnob"></div></div>
+        <span class="time" id="durTime">0:00</span>
+      </div>
+    </div>
+    <div class="pb__right">
+      <button class="iconbtn" id="btnQueue" data-icon="queue" title="播放队列" aria-label="播放队列"><span class="badge" id="queueCount">0</span></button>
+      <button class="iconbtn" id="btnLyric" data-icon="lyric" title="歌词" aria-label="歌词"></button>
+      <div class="vol">
+        <button class="iconbtn" id="btnVol" data-icon="volume" title="静音" aria-label="静音"></button>
+        <div class="vol__slider" id="volSlider" role="slider" aria-label="音量" aria-valuemin="0" aria-valuemax="100" aria-valuenow="80" tabindex="0"><div class="vol__fill" id="volFill"></div></div>
+      </div>
+      <button class="iconbtn" id="btnMini2" data-icon="mini" title="迷你模式" aria-label="迷你模式"></button>
+    </div>
+  </footer>
+
+  <!-- 正在播放浮层（大封面 + 卡拉OK歌词） -->
+  <div class="np" id="np" aria-hidden="true">
+    <div class="np__bg" id="npBg"></div>
+    <button class="np__close iconbtn" id="npClose" data-icon="close" aria-label="关闭"></button>
+    <div class="np__inner">
+      <div class="np__visual">
+        <div class="np__cover" id="npCover"></div>
+        <div class="np__vinyl"></div>
+      </div>
+      <div class="np__side">
+        <div class="np__head">
+          <div class="kicker">NOW PLAYING</div>
+          <div class="np__title" id="npTitle">未在播放</div>
+          <div class="np__artist" id="npArtist">—</div>
+          <div class="np__album" id="npAlbum"></div>
+        </div>
+        <div class="np__lyrics" id="npLyrics"><div class="lyric-empty">还没有正在播放的歌曲</div></div>
+        <div class="np__bottom">
+          <div class="np__progress">
+            <span class="time" id="npCurTime">0:00</span>
+            <div class="seek seek--np" id="npSeek"><div class="seek__fill" id="npSeekFill"></div><div class="seek__knob" id="npSeekKnob"></div></div>
+            <span class="time" id="npDurTime">0:00</span>
+          </div>
+          <div class="np__controls">
+            <button class="iconbtn" id="npFav" data-icon="heart" title="收藏" aria-label="收藏"></button>
+            <button class="iconbtn" id="npDownload" data-icon="download" title="下载这首歌" aria-label="下载这首歌"></button>
+            <button class="iconbtn" id="npPrev" data-icon="prev" title="上一首" aria-label="上一首"></button>
+            <button class="playbtn" id="npPlay" data-icon="play" title="播放/暂停" aria-label="播放或暂停"></button>
+            <button class="iconbtn" id="npNext" data-icon="next" title="下一首" aria-label="下一首"></button>
+            <button class="iconbtn" id="npQueue" data-icon="queue" title="播放队列" aria-label="播放队列"></button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script type="module" src="./js/app.js"></script>
+</body>
+</html>
