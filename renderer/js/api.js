@@ -70,6 +70,11 @@ export const api = {
   search: (keywords, type = 1, limit = 30, offset = 0) => request('/search', { keywords, type, limit, offset }),
   songUrl: (id) => request('/song/url', { id }),
   lyric: (id) => request('/lyric', { id }),
+  // 歌词译文兜底：key 只存后端，渲染层拿不到
+  translateState: () => dataOf(request('/translate/state')),
+  translateSave: (payload) => post('/translate/config', payload),
+  // 歌词译文兜底：网易云没给 tlyric 时才按需调用（服务端按 歌曲+原文+目标语言 缓存）
+  translate: (id, lines, to = 'zh') => post('/translate', { id, lines, to }, 30000),
   songDetail: (id) => request('/song/detail', { id }),
   album: (id) => request('/album', { id }),
   artistTop: (id) => request('/artists', { id }),

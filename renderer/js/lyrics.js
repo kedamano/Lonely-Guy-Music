@@ -24,6 +24,28 @@ export function parseLRC(text) {
   return lines;
 }
 
+// 网易云 tlyric 的时间轴常与原歌词不一一对应（译文行更少或整体偏移），
+// 所以按"译文落在主行区间内"归并；对不上宁可留空，也不能串行。
+export function attachTranslation(lines, tlyricText) {
+  const tr = parseLRC(tlyricText);
+  if (!lines || !lines.length || !tr.length) return lines;
+  let ti = 0;
+  lines.forEach((line, i) => {
+    const next = lines[i + 1];
+    const end = next ? next.time : Infinity;
+    const buf = [];
+    while (ti < tr.length && tr[ti].time < end) {
+      if (tr[ti].time >= line.time - 0.5) buf.push(tr[ti].text);
+      ti++;
+    }
+    if (buf.length) line.trans = buf.join(' ');
+  });
+  if (lines.every((l) => !l.trans) && tr.length === lines.length) {
+    lines.forEach((l, i) => { l.trans = tr[i].text; });
+  }
+  return lines;
+}
+
 // 返回当前时间对应的歌词行索引（-1 表示还没开始）
 export function activeLine(lines, time) {
   let idx = -1;

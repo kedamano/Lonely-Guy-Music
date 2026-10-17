@@ -1,0 +1,67 @@
+# electron-builder 配置：孤男音乐 Windows 安装包
+# 文档：https://www.electron.build/configuration
+appId: com.guman.music
+productName: 孤男音乐
+copyright: Copyright © 2026 孤男音乐
+
+directories:
+  output: dist
+  buildResources: build
+
+# 只打必要文件；devDependencies 会被自动剪掉（playwright 等不进包）
+files:
+  - main.js
+  - main-log.js
+  - preload.js
+  - assets/**
+  - server/**
+  - renderer/**
+  - package.json
+  - "!**/*.md"
+  - "!**/*.map"
+
+asar: true
+# NCM 子进程用真实 node 进程 spawn app.js，asar 内的路径不是真实文件；
+# 连同它自身依赖一起解出（npm 扁平安装，依赖就在 node_modules 下）。
+asarUnpack:
+  - "**/node_modules/**"
+
+win:
+  icon: build/icon.ico
+  target:
+    - target: nsis
+      arch: x64
+  # 产物名用 ASCII，避免中文文件名在部分工具链/杀软下出问题
+  artifactName: GumanMusic-${version}-${arch}.${ext}
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: 孤男音乐
+  menuCategory: false
+  # 安装包内嵌卸载器
+  deleteAppDataOnUninstall: false
+
+# ---- 自动更新发布源（electron-updater）----
+# 当前为占位地址：未配置时启动检查会失败并静默跳过，不影响使用。
+# 自建服务器：保持 provider: generic，把 url 改为实际发布地址。
+# GitHub Releases：改为
+#   publish:
+#     - provider: github
+#       owner: <你的账号>
+#       repo: <仓库名>
+# 并在 CI 中用 GH_TOKEN 发布。
+publish:
+  - provider: generic
+    url: https://example.com/guman-updates
+
+# ---- 代码签名（可选，需要代码签名证书）----
+# 未签名包会被 Windows SmartScreen 拦截，用户点「更多信息 → 仍要运行」即可安装。
+# 有 OV/EV 证书后，在 CI/本机设置环境变量（不要把证书提交进仓库）：
+#   CSC_LINK=path/to/cert.pfx   CSC_KEY_PASSWORD=xxx
+# 或在下方配置（同样建议走环境变量）：
+# certificateFile: ""
+# certificatePassword: ""

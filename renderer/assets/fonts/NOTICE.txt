@@ -1,0 +1,21 @@
+自托管字体资源说明
+====================
+
+本目录的 woff2 字体由 scripts/build-fonts.js 从 @fontsource 包自动提取，
+用于替代原先对 Google Fonts CDN 的运行时引用（离线可用、不向第三方域名发起请求）。
+
+重新生成：npm run fonts（生成后请连同本文件一起提交）
+
+字体与授权（均为 SIL Open Font License 1.1）
+  - Anton            https://fonts.google.com/specimen/Anton
+  - IBM Plex Sans    https://fonts.google.com/specimen/IBM+Plex+Sans
+  - IBM Plex Mono    https://fonts.google.com/specimen/IBM+Plex+Mono
+  - Noto Sans SC     https://fonts.google.com/specimen/Noto+Sans+SC
+
+OFL 1.1 全文：https://openfontlicense.org/
+版权所有 (c) 各字体设计机构与 Google LLC；字体本身不随本项目修改。
+
+抽样策略（控制体积）
+  - IBM Plex Sans / Mono：仅 latin + latin-ext 子集
+  - Noto Sans SC：变量版全部 unicode 区块（含 latin），确保中文歌名与歌词不缺字
+  - Anton：latin + latin-ext

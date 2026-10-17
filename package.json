@@ -1,6 +1,6 @@
 {
   "name": "guman-music",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "孤男音乐 · 桌面端音乐客户端（在线网易云曲库 + 本地音乐 + 实时频谱/卡拉OK歌词/EQ/睡眠定时）",
   "main": "main.js",
   "author": "孤男音乐",
@@ -8,7 +8,11 @@
   "scripts": {
     "start": "electron .",
     "server": "node server/index.js",
-    "mock": "node server/mock.js"
+    "mock": "node server/mock.js",
+    "icons": "node -e \"require('./assets/icon').writeIcons('build')\"",
+    "fonts": "node scripts/build-fonts.js",
+    "dist": "npm run icons && electron-builder --win nsis",
+    "dist:dir": "npm run icons && electron-builder --win dir"
   },
   "dependencies": {
     "cors": "^2.8.5",
@@ -16,7 +20,13 @@
     "NeteaseCloudMusicApi": "^4.32.0"
   },
   "devDependencies": {
-    "electron": "^44.0.0",
+    "@fontsource-variable/ibm-plex-sans": "^5.3.0",
+    "@fontsource-variable/noto-sans-sc": "^5.3.1",
+    "@fontsource/anton": "^5.3.0",
+    "@fontsource/ibm-plex-mono": "^5.3.0",
+    "electron": "^44.8.0",
+    "electron-builder": "^26.15.3",
+    "electron-updater": "^6.8.9",
     "playwright": "^1.47.2"
   }
 }

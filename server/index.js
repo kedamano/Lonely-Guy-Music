@@ -1,14 +1,16 @@
 'use strict';
 /**
- * 主机后端（端口 3000）
+ * 主机后端（端口动态分配，默认仅绑 127.0.0.1）
  *  - 托管渲染层 UI（renderer/），与 API 同源 → 无 CORS、webSecurity 可保持开启
- *  - /api/* 路由：在线时反代网易云 API（运行在 3001），离线时降级为内置 mock
+ *  - /api/* 路由：在线时反代网易云 API（子进程，端口动态挑选），离线时降级为内置 mock
  *  - 在线探测：启动即拉起 NeteaseCloudMusicApi，探测可达后置 online
  *  - 音源系统：/api/sources/* 加载/管理 LX Music 自定义源脚本，/api/sources/resolve 取播放链
+ *  - module.exports.ready：监听完成（端口已确定）后 resolve，供主进程 loadURL 前 await
  */
 
 const path = require('path');
 const fs = require('fs');
+const net = require('net');
 const express = require('express');
 const { spawn } = require('child_process');
 const { Readable } = require('stream');
@@ -16,10 +18,18 @@ const mock = require('./mock');
 const sourceManager = require('./source-manager');
 const account = require('./account');
 const library = require('./library');
+const translate = require('./translate');
 
-const HOST_PORT = Number(process.env.HOST_PORT || 3000);
-const NCM_PORT = Number(process.env.NCM_PORT || 3001);
-const NCM_URL = `http://localhost:${NCM_PORT}`;
+// 监听地址：仅本机回环。/api 会注入登录 cookie，绑 0.0.0.0 会把它暴露给整个局域网。
+const HOST_BIND = process.env.HOST_BIND || '127.0.0.1';
+// 端口：测试可用 HOST_PORT 指定；默认 0 = 由系统分配空闲端口。
+// 曾硬编码 3000，被其它应用占用时整体无法启动（单实例锁只防自己）。
+const HOST_PORT = process.env.HOST_PORT ? Number(process.env.HOST_PORT) : 0;
+const NCM_PORT_ENV = process.env.NCM_PORT ? Number(process.env.NCM_PORT) : 0;
+let ncmPort = NCM_PORT_ENV; // 0 = 启动时动态挑选
+let ncmUrl = '';
+// 实际监听端口：listen 回调中赋值，经 module.exports 暴露给主进程（loadURL 用）
+let actualPort = null;
 const DATA_DIR = process.env.GUMAN_USER_DATA
   ? process.env.GUMAN_USER_DATA
   : path.join(__dirname, '../userData');
@@ -28,17 +38,26 @@ const app = express();
 app.use(express.json({ limit: '2mb' }));
 
 // 只允许本机页面访问：/api 会把登录 cookie 注入上游，若放开跨域，
-// 任意网页都能借 localhost:3000 读用户的账号数据（CSRF/跨站读取）。
-const ALLOW_ORIGINS = new Set([
-  `http://localhost:${HOST_PORT}`,
-  `http://127.0.0.1:${HOST_PORT}`,
-]);
+// 任意网页都能借 localhost 读用户的账号数据（CSRF/跨站读取）。
+// 端口改为动态分配后无法预置白名单，因此按「回环地址 + 端口与实际监听端口一致」判定。
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
+function isLoopbackOrigin(origin) {
+  try {
+    const u = new URL(origin);
+    if (!LOOPBACK_HOSTS.has(u.hostname)) return false;
+    return actualPort != null && String(u.port) === String(actualPort);
+  } catch (_) {
+    return false;
+  }
+}
 app.use((req, res, next) => {
   const origin = req.headers.origin;
-  if (origin && origin !== 'null' && !ALLOW_ORIGINS.has(origin)) {
-    return res.status(403).json({ code: 403, msg: 'cross-origin request blocked' });
+  if (origin && origin !== 'null') {
+    if (!isLoopbackOrigin(origin)) {
+      return res.status(403).json({ code: 403, msg: 'cross-origin request blocked' });
+    }
+    res.set('Access-Control-Allow-Origin', origin);
   }
-  if (ALLOW_ORIGINS.has(origin)) res.set('Access-Control-Allow-Origin', origin);
   next();
 });
 
@@ -228,6 +247,27 @@ app.post('/api/library/meta', (req, res) => {
   }
 });
 
+// 歌词译文兜底：key 只存本机，响应里只有译文本身
+app.get('/api/translate/state', (req, res) => res.json({ code: 0, data: translate.state() }));
+
+app.post('/api/translate/config', (req, res) => {
+  try {
+    const c = translate.saveConfig(req.body || {});
+    res.json({ code: 0, data: { configured: !!(c.baseUrl && c.apiKey && c.model), model: c.model, baseUrl: c.baseUrl } });
+  } catch (e) {
+    res.status(400).json({ code: 400, msg: e.message });
+  }
+});
+
+app.post('/api/translate', async (req, res) => {
+  try {
+    const r = await translate.translate(req.body || {});
+    res.status(r.code === 0 ? 200 : 400).json(r);
+  } catch (e) {
+    res.status(502).json({ code: 502, msg: e.message });
+  }
+});
+
 // 本地音频同源流：id 必须在清单里（拒绝任意路径），支持 Range 以便拖拽与 Web Audio
 app.get('/api/local', (req, res) => {
   const hit = library.resolve(String(req.query.id || ''));
@@ -277,7 +317,7 @@ app.all('/api/*', async (req, res, next) => {
     return res.status(403).json({ code: 403, msg: '请使用 /api/account/* 登录接口' });
   }
   const query = new URLSearchParams(req.url.split('?')[1] || '').toString();
-  const target = `${NCM_URL}${neteasePath}${query ? `?${query}` : ''}`;
+  const target = `${ncmUrl}${neteasePath}${query ? `?${query}` : ''}`;
 
   res.set('X-Api-Mode', online ? 'online' : 'offline');
 
@@ -310,7 +350,7 @@ app.all('/api/*', async (req, res, next) => {
   return res.status(404).json({ code: 404, msg: 'unknown mock route', path: neteasePath });
 });
 
-app.get('/api/__mode', (req, res) => res.json({ online, host: HOST_PORT, ncm: NCM_PORT }));
+app.get('/api/__mode', (req, res) => res.json({ online, host: actualPort, ncm: ncmPort }));
 
 // 同源音频代理：把远程音频（网易云 / 示例曲 / 音源返回链接）转发为同源流，
 // 使渲染层可将其接入 Web Audio（均衡器 + 可视化）而不会因跨域被静音。支持 Range 转发。
@@ -352,29 +392,85 @@ app.use((err, req, res, _next) => {
   if (!res.headersSent) res.status(500).json({ code: 500, msg: '服务器内部错误' });
 });
 
-// ---- 拉起网易云 API（后台子进程，端口 3001）----
-function startNetease() {
-  const appJs = path.join(__dirname, '../node_modules/NeteaseCloudMusicApi/app.js');
+// ---- 拉起网易云 API（后台子进程，端口动态挑选）----
+// 开发时位于 node_modules；打包后 asarUnpack 会把它解到 app.asar.unpacked。
+// asar 内的路径对 spawn 不是真实文件，必须先解析到解包位置。
+function resolveNcmAppJs() {
+  const candidates = [];
+  if (process.resourcesPath) {
+    candidates.push(path.join(process.resourcesPath, 'app.asar.unpacked/node_modules/NeteaseCloudMusicApi/app.js'));
+  }
+  candidates.push(path.join(__dirname, '../node_modules/NeteaseCloudMusicApi/app.js'));
+  for (const c of candidates) {
+    try { if (fs.existsSync(c)) return c; } catch (_) { /* ignore */ }
+  }
+  return candidates[candidates.length - 1];
+}
+
+// 子进程意外退出（常见的就是端口冲突）时自动重启，最多 3 次；
+// 彻底起不来则由 probe 的后台轮询维持离线模式，不影响应用使用。
+let ncmRestarts = 0;
+function startNetease(port) {
+  const appJs = resolveNcmAppJs();
   const child = spawn(process.execPath, [appJs], {
-    env: { ...process.env, PORT: String(NCM_PORT) },
+    env: { ...process.env, PORT: String(port) },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   child.stdout?.on('data', () => {});
   child.stderr?.on('data', (d) => process.stderr.write(`[ncm] ${d}`));
   child.on('exit', (code) => {
-    if (code) console.log(`[ncm] exited with ${code}`);
+    if (code) {
+      console.log(`[ncm] exited with ${code}`);
+      if (ENABLE_NCM && ncmRestarts < 3) {
+        ncmRestarts++;
+        console.log(`[ncm] 尝试重启（第 ${ncmRestarts} 次）`);
+        setTimeout(() => startNetease(port), 1500);
+      } else {
+        console.log('[ncm] 多次启动失败，保持离线模式（内置示例曲库）');
+      }
+    }
   });
   return child;
+}
+
+// 判断回环地址的某个端口是否空闲。
+// 注意：不能用「自己 bind 成功 = 空闲」来探测——Windows 的 SO_REUSEADDR 允许
+// 与已监听的端口重复 bind（曾导致误判 3001 空闲，子进程 listen 失败直接退出）。
+// 改用主动连接探测：连得上 = 已被占用。
+function isPortFree(p) {
+  return new Promise((resolve) => {
+    const sock = new net.Socket();
+    let settled = false;
+    const done = (free) => {
+      if (settled) return;
+      settled = true;
+      try { sock.destroy(); } catch (_) { /* ignore */ }
+      resolve(free);
+    };
+    sock.setTimeout(500);
+    sock.once('connect', () => done(false));   // 连得上 → 已被占用
+    sock.once('timeout', () => done(false));   // 不确定，保守当作占用并换下一个
+    sock.once('error', () => done(true));      // ECONNREFUSED → 空闲
+    sock.connect(p, HOST_BIND);
+  });
+}
+
+async function pickFreePort(start, tries = 20) {
+  for (let i = 0; i < tries; i++) {
+    const p = start + i;
+    if (await isPortFree(p)) return p;
+  }
+  return start;
 }
 
 // ---- 在线探测：可达即置 online（持久后台轮询）----
 // 音源初始化与子进程启动可能争抢资源，NCM 起步慢时首次窗口（约 90s）内探不到；
 // 因此窗口过后转入 5s 低频轮询，一旦可达立即切在线（UI 每 3s 轮询徽标）。
-async function probe() {
+async function probe(url) {
   let announcedOffline = false;
   for (let i = 0; ; i++) {
     try {
-      const r = await fetch(`${NCM_URL}/personalized`, { signal: AbortSignal.timeout(1200) });
+      const r = await fetch(`${url}/personalized`, { signal: AbortSignal.timeout(1200) });
       if (r.ok) {
         if (!online) console.log('[api] 在线模式：已连接到网易云 API');
         online = true;
@@ -391,29 +487,45 @@ async function probe() {
   }
 }
 
-// 默认离线（内置示例曲库）；设置 ENABLE_NCM=1 才拉起网易云在线 API（端口 NCM_PORT）
+// 默认离线（内置示例曲库）；设置 ENABLE_NCM=1 才拉起网易云在线 API
 const ENABLE_NCM = process.env.ENABLE_NCM === '1';
 
-app.listen(HOST_PORT, async () => {
-  // 账号与本地曲库都落在 userData（Electron 主进程通过 GUMAN_USER_DATA 传入）
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-  account.init({ dataDir: DATA_DIR, ncmUrl: NCM_URL });
-  library.init(DATA_DIR);
-  // 先初始化音源系统（读取已保存的音源脚本并执行）
-  await sourceManager.init();
-  console.log(`[host] 孤男音乐 后端已启动: http://localhost:${HOST_PORT}`);
-  if (ENABLE_NCM) {
-    startNetease();
-    probe();
-  } else {
-    console.log('[api] 离线模式：内置示例曲库（设置 ENABLE_NCM=1 启用网易云在线曲库）');
-  }
-}).on('error', (e) => {
-  if (e && e.code === 'EADDRINUSE') {
-    console.error(`[host] 端口 ${HOST_PORT} 已被占用——可能已有另一个孤男音乐实例在运行。`);
-    console.error('[host] 请先在系统托盘右键「退出」旧实例，或结束占用该端口的进程后重试。');
-  } else {
-    console.error('[host] 服务启动失败:', e);
-  }
-  process.exit(1);
+// 后端就绪 Promise：主进程 await 之后再 loadURL（端口此时已确定）
+const ready = new Promise((resolve, reject) => {
+  const server = app.listen(HOST_PORT, HOST_BIND, async () => {
+    try {
+      actualPort = server.address().port;
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+      if (!ncmPort) ncmPort = await pickFreePort(3001);
+      ncmUrl = `http://127.0.0.1:${ncmPort}`;
+      // 账号与本地曲库都落在 userData（Electron 主进程通过 GUMAN_USER_DATA 传入）
+      account.init({ dataDir: DATA_DIR, ncmUrl });
+      library.init(DATA_DIR);
+      translate.init(DATA_DIR);
+      // 先初始化音源系统（读取已保存的音源脚本并执行）
+      await sourceManager.init();
+      console.log(`[host] 孤男音乐 后端已启动: http://127.0.0.1:${actualPort}（网易云 API 端口 ${ncmPort}）`);
+      if (ENABLE_NCM) {
+        startNetease(ncmPort);
+        probe(ncmUrl);
+      } else {
+        console.log('[api] 离线模式：内置示例曲库（设置 ENABLE_NCM=1 启用网易云在线曲库）');
+      }
+      resolve(actualPort);
+    } catch (e) {
+      reject(e);
+    }
+  });
+  server.on('error', (e) => {
+    if (e && e.code === 'EADDRINUSE') {
+      console.error(`[host] 端口 ${HOST_PORT} 已被占用——可能已有另一个孤男音乐实例在运行。`);
+      console.error('[host] 请先在系统托盘右键「退出」旧实例，或结束占用该端口的进程后重试。');
+    } else {
+      console.error('[host] 服务启动失败:', e);
+    }
+    reject(e);
+    process.exit(1);
+  });
 });
+
+module.exports = { ready, getPort: () => actualPort };

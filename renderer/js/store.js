@@ -38,6 +38,7 @@ const DEFAULTS = {
   delayLyricScroll: false,// 延迟歌词滚动
   lyricDragSeek: false,   // 允许通过拖拽歌词调整播放进度
   lyricAlign: 'center',   // 歌词对齐方式：left / center / right
+  lyricLang: 'off',       // 歌词语言：off 只看原文 / trans 只看译文 / both 双语对照
 
   /* ---------- 桌面歌词 ---------- */
   desktopLyric: false,    // 显示桌面歌词
@@ -247,6 +248,10 @@ export const store = {
     persist();
   },
   clearSearchHistory() { data.searchHistory = []; persist(); },
+  removeSearchHistory(keyword) {
+    data.searchHistory = (data.searchHistory || []).filter((x) => x !== keyword);
+    persist();
+  },
 
   /* ---------- 播放进度记忆 ---------- */
   getProgress(key) {

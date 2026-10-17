@@ -71,6 +71,7 @@ function getIconBuffers() {
 }
 function writeIcons(dir) {
   const { png, ico } = getIconBuffers();
+  fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, 'icon.png'), png);
   fs.writeFileSync(path.join(dir, 'icon.ico'), ico);
 }

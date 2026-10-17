@@ -2,6 +2,7 @@
 //         下载设置 / 网络代理 / 自定义源管理 / 快捷键 / 关于
 import { api } from './api.js';
 import { store } from './store.js';
+import { applyLang, currentLang } from './i18n.js';
 import { el, heading, icon, toast as uiToast, emptyState } from './ui.js';
 
 const QUALITIES = [
@@ -57,6 +58,12 @@ const LYRIC_ALIGNS = [
   { key: 'right', label: '右' },
 ];
 
+const LYRIC_LANGS = [
+  { key: 'off', label: '只看原文' },
+  { key: 'trans', label: '只看译文' },
+  { key: 'both', label: '双语对照' },
+];
+
 const NAMINGS = [
   { key: 'name-artist', label: '歌曲名 - 艺术家' },
   { key: 'artist-name', label: '艺术家 - 歌曲名' },
@@ -86,8 +93,12 @@ export class SettingsView {
   async init() {
     this.container.innerHTML = '';
     this.renderSkeleton();
-    await this.load();
+    await Promise.all([this.load(), this.loadTranslate()]);
+    // 状态行与占位符是接口回来后才写入的，首屏那次 applyLang 看不到它们
+    this.refreshLang();
   }
+
+  refreshLang() { applyLang(currentLang()); }
 
   /* ---------- 构建辅助 ---------- */
   section(title, desc) {
@@ -154,7 +165,7 @@ export class SettingsView {
       el('span', { class: 'settings__item-label', text: label }),
       desc ? el('div', { class: 'settings__item-desc', text: desc }) : null,
     ]));
-    const sel = el('select', { class: 'settings__select', 'aria-label': label });
+    const sel = el('select', { class: 'settings__select', 'aria-label': label, dataset: { key } });
     options.forEach((o) => sel.appendChild(el('option', { value: o.key }, o.label)));
     sel.value = store.get(key);
     sel.addEventListener('change', () => {
@@ -243,6 +254,20 @@ export class SettingsView {
     this.toggleRow(npSet, { key: 'lyricDragSeek', label: '允许通过拖拽歌词调整播放进度', desc: '上下拖拽歌词行快进/快退' });
     this.segRow(npSet, { key: 'lyricAlign', label: '歌词对齐方式', options: LYRIC_ALIGNS });
     wrap.appendChild(npSet);
+
+    /* ---------- 歌词翻译 ---------- */
+    const transSec = this.section('歌词翻译', '优先使用网易云自带的官方译文；没有译文时，点歌词页的「翻译这首歌」才会调用你配置的模型，不会自动发起外部请求。');
+    this.selectRow(transSec, { key: 'lyricLang', label: '歌词显示', options: LYRIC_LANGS, desc: '译文按界面语言生成：简体/繁体界面译成中文，英文界面译成英文' });
+    const trRow = el('div', { class: 'settings__addrow settings__keyrow' });
+    this.trBaseInput = el('input', { class: 'settings__input', type: 'text', spellcheck: 'false', placeholder: 'https://api.openai.com/v1', 'aria-label': '翻译服务地址' });
+    this.trKeyInput = el('input', { class: 'settings__input', type: 'password', spellcheck: 'false', placeholder: 'API Key', 'aria-label': '翻译服务密钥' });
+    this.trModelInput = el('input', { class: 'settings__input', type: 'text', spellcheck: 'false', placeholder: '模型名，如 gpt-4o-mini', 'aria-label': '翻译模型' });
+    trRow.append(this.trBaseInput, this.trKeyInput, this.trModelInput);
+    trRow.appendChild(el('button', { class: 'btn btn--primary', onclick: () => this.onSaveTranslate() }, [icon('check'), '保存翻译服务']));
+    transSec.appendChild(trRow);
+    this.trStatus = el('p', { class: 'settings__desc settings__proxystatus' });
+    transSec.appendChild(this.trStatus);
+    wrap.appendChild(transSec);
 
     /* ---------- 桌面歌词 ---------- */
     const dl = this.section('桌面歌词', '在桌面上显示一层置顶歌词，可锁定位置。');
@@ -360,8 +385,27 @@ export class SettingsView {
     /* ---------- 关于 ---------- */
     const aboutSec = this.section('关于');
     const modeText = api.lastMode === 'online' ? '在线曲库（网易云）' : '离线示例曲库';
-    aboutSec.appendChild(el('p', { class: 'settings__desc' }, `孤男音乐 · 桌面声场 v1.1.0 · 当前模式：${modeText}。`));
+    // 版本号以 package.json 为单一来源（preload 暴露 app.getVersion()）
+    const ver = (window.gm && window.gm.appVersion) || '1.0.0';
+    aboutSec.appendChild(el('p', { class: 'settings__desc' }, `孤男音乐 · 桌面声场 v${ver} · 当前模式：${modeText}。`));
     aboutSec.appendChild(el('p', { class: 'settings__desc' }, '在线曲库依赖第三方接口，仅供学习研究；本地音乐与自定义音源均在本机处理。'));
+    if (window.gm && window.gm.electronVersion) {
+      aboutSec.appendChild(el('p', { class: 'settings__desc' }, `Electron ${window.gm.electronVersion} · 运行模式：${window.gm.devMode ? '开发' : '生产'}`));
+    }
+    // 日志目录：故障诊断时排查用
+    const logRow = el('div', { class: 'settings__item' }, [
+      el('div', { class: 'settings__item-main' }, [
+        el('div', { class: 'settings__item-label', text: '日志目录' }),
+        el('div', { class: 'settings__item-desc', text: '运行日志仅保存在本机，排查故障时提供给开发者' }),
+      ]),
+      el('div', { class: 'settings__item-ctrl' }, [
+        el('button', {
+          class: 'btn btn--small',
+          onclick: () => { if (window.gm && window.gm.openLogDir) window.gm.openLogDir(); },
+        }, [icon('folder'), '打开']),
+      ]),
+    ]);
+    aboutSec.appendChild(logRow);
     wrap.appendChild(aboutSec);
 
     this.container.appendChild(wrap);
@@ -383,6 +427,42 @@ export class SettingsView {
         iconName: 'alert', title: '音源列表加载失败', desc: e.message,
         actions: [el('button', { class: 'btn btn--small', onclick: () => this.load() }, [icon('refresh'), '重试'])],
       }));
+    }
+  }
+
+  renderTranslateStatus() {
+    if (!this.trStatus) return;
+    const c = this.translateCfg;
+    this.trStatus.textContent = c && c.configured
+      ? `当前状态：已配置 ${c.model}（密钥只保存在本机用户目录，不会下发到界面）`
+      : '当前状态：未配置翻译服务，只有网易云自带译文的歌曲能显示译文';
+  }
+
+  async loadTranslate() {
+    try {
+      const c = await api.translateState();
+      this.translateCfg = c || null;
+      if (this.trBaseInput) this.trBaseInput.value = (c && c.baseUrl) || '';
+      if (this.trModelInput) this.trModelInput.value = (c && c.model) || '';
+      if (this.trKeyInput) this.trKeyInput.placeholder = c && c.configured ? '已保存（留空则不修改）' : 'API Key';
+      this.renderTranslateStatus();
+    } catch (_) { /* 探测失败不影响设置页其余部分 */ }
+  }
+
+  async onSaveTranslate() {
+    const base = this.trBaseInput.value.trim();
+    const key = this.trKeyInput.value.trim();
+    const model = this.trModelInput.value.trim();
+    if (!base || !model) return this.onToast('请填写服务地址与模型名');
+    if (!key && !(this.translateCfg && this.translateCfg.configured)) return this.onToast('请填写 API Key');
+    try {
+      const saved = await api.translateSave({ baseUrl: base, model, apiKey: key || undefined });
+      this.translateCfg = saved;
+      this.trKeyInput.value = '';
+      this.renderTranslateStatus();
+      this.onToast('翻译服务已保存');
+    } catch (e) {
+      this.onToast('保存失败：' + e.message);
     }
   }
 

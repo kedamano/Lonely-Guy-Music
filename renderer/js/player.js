@@ -1,6 +1,6 @@
 // 播放引擎：Web Audio 队列播放、图形均衡器、实时分析、睡眠淡出、队列管理
 import { api } from './api.js';
-import { parseLRC } from './lyrics.js';
+import { parseLRC, attachTranslation } from './lyrics.js';
 import { store, EQ_FREQS } from './store.js';
 import { trackKey } from './ui.js';
 import { accountState } from './account.js';
@@ -182,15 +182,37 @@ export class Player {
 
   async _loadLyric(track, token) {
     let lines = [];
+    this.lyricTransFrom = '';
     if (track.source !== 'local') {
       try {
         const r = await api.lyric(track.id);
         if (token !== this._token) return;
         lines = parseLRC(r.lrc && r.lrc.lyric);
+        if (attachTranslation(lines, r.tlyric && r.tlyric.lyric).some((l) => l.trans)) {
+          this.lyricTransFrom = 'cloud';
+        }
       } catch (_) { lines = []; }
     }
     this.lyricLines = lines;
     this.emit('lyric', lines);
+  }
+
+  // 按需补译文（AI 兜底）：只在用户点「翻译」时调用，不自动发起外部请求
+  async requestTranslation(target = 'zh') {
+    const lines = this.lyricLines;
+    const track = this.current;
+    if (!track || !lines.length || this.lyricTransFrom === 'ai') return false;
+    const missing = lines.filter((l) => !l.trans);
+    if (!missing.length) return true;
+    const res = await api.translate(track.id, lines.map((l) => l.text), target);
+    const trans = res && res.lines;
+    if (!Array.isArray(trans)) return false;
+    let hit = 0;
+    lines.forEach((l, i) => { if (trans[i]) { l.trans = trans[i]; hit++; } });
+    if (!hit) return false;
+    this.lyricTransFrom = 'ai';
+    this.emit('lyric', lines);
+    return true;
   }
 
   async playTrack(track, queue, index) {

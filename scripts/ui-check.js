@@ -2,8 +2,9 @@
 const { chromium } = require('playwright');
 const path = require('path');
 const fs = require('fs');
+const http = require('http');
 
-const BASE = process.env.BASE_URL || 'http://localhost:3000';
+const BASE = process.env.BASE_URL || `http://localhost:${process.env.HOST_PORT || 3100}`;
 const SHOTS = path.join(__dirname, 'shots');
 fs.mkdirSync(SHOTS, { recursive: true });
 
@@ -32,7 +33,49 @@ const shot = async (page, name) => {
   await page.screenshot({ path: path.join(SHOTS, name + '.png'), fullPage: false });
 };
 
+// 假的 OpenAI 兼容翻译服务：验证「用户自带 key」这条链路时不需要真实额度
+const STUB_PORT = Number(process.env.TRANS_STUB_PORT || 4399);
+let stubHits = 0;
+let stubAuth = '';
+function startStubProvider() {
+  return new Promise((resolve, reject) => {
+    const srv = http.createServer((req, res) => {
+      let raw = '';
+      req.on('data', (c) => { raw += c; });
+      req.on('end', () => {
+        stubHits++;
+        stubAuth = String(req.headers.authorization || '');
+        let out = '[]';
+        try {
+          const body = JSON.parse(raw);
+          const user = (body.messages || []).map((m) => m.content).join('\n');
+          const arr = JSON.parse(user.slice(user.lastIndexOf('['), user.lastIndexOf(']') + 1));
+          out = JSON.stringify(arr.map((s) => `T:${s}`));
+        } catch (_) { /* 返回空数组，让被测代码走失败分支 */ }
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ choices: [{ message: { role: 'assistant', content: out } }] }));
+      });
+    });
+    srv.once('error', reject);
+    srv.listen(STUB_PORT, '127.0.0.1', () => resolve(srv));
+  });
+}
+
+const apiGet = (p) => fetch(BASE + p).then((r) => r.json());
+// 切语言会整页重建设置页，异步接口回填完成后才算稳定
+const waitSettingsSettled = (page) => page.waitForFunction(() => {
+  const secs = [...document.querySelectorAll('.settings__section')];
+  if (!secs.length) return false;
+  if (!secs.every((s) => +getComputedStyle(s).opacity > 0.9)) return false;
+  const status = [...document.querySelectorAll('.settings__proxystatus')].filter((n) => n.textContent.trim());
+  return status.length >= 2 && [...document.querySelectorAll('.settings__select')].every((s) => s.value);
+}, null, { timeout: 10000 }).then(() => true).catch(() => false);
+const apiPost = (p, body) => fetch(BASE + p, {
+  method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+}).then((r) => r.json());
+
 (async () => {
+  const stub = await startStubProvider();
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 1360, height: 860 } });
   page.on('console', (m) => { if (m.type() === 'error') errors.push('[console] ' + m.text()); });
@@ -244,9 +287,9 @@ const shot = async (page, name) => {
     `${scrobbleGate.source}/${scrobbleGate.id}`);
   check('未登录时不上报听歌记录', scrobbleGate.ready === false);
 
-  const scrobbleReq = page.waitForRequest((r) => r.url().includes('/api/scrobble'), { timeout: 8000 })
+  const scrobbleReq = page.waitForRequest((r) => r.url().includes('/api/scrobble'), { timeout: 12000 })
     .catch(() => null);
-  await page.evaluate(async () => {
+  const scrobbleDrive = await page.evaluate(async () => {
     const p = window.__guman.player;
     // 离线环境没有登录态，绕过账号闸门，只验证"到达阈值 → 发出上报请求"这条链路
     p._scrobbleReady = () => true;
@@ -254,14 +297,212 @@ const shot = async (page, name) => {
     if (p.audio.paused) { try { await p.audio.play(); } catch (_) { /* 自动播放策略 */ } }
     const d = p.duration;
     const need = d ? Math.max(30, Math.min(d / 2, 240)) : 30;
-    const maxSeek = isFinite(p.audio.duration) && p.audio.duration > need + 2 ? p.audio.duration - 1 : need + 1;
-    p.audio.currentTime = Math.min(need + 1, maxSeek);
+    // 示例音频走外网 CDN，元数据没回来时 seek 会被夹回 0，所以轮询到阈值真正生效为止
+    const deadline = Date.now() + 9000;
+    while (Date.now() < deadline && !p._scrobbled) {
+      p.audio.currentTime = need + 1;
+      p._maybeScrobble();
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    return { need, state: p.audio.readyState, dur: p.audio.duration, at: p.audio.currentTime };
   });
   const hit = await scrobbleReq;
-  check('到达阈值后上报听歌记录', !!hit, hit ? new URL(hit.url()).search.slice(0, 48) : '未发出请求');
+  check('到达阈值后上报听歌记录', !!hit,
+    hit ? new URL(hit.url()).search.slice(0, 48) : `未发出请求（阈值 ${scrobbleDrive.need}s，readyState ${scrobbleDrive.state}）`);
   const dup = await page.evaluate(() => window.__guman.player._scrobbled);
   check('同一首不重复上报', dup === true);
   await shot(page, '16-scrobble');
+
+  // ---------- 语言切换 ----------
+  const CJK = new RegExp('[' + String.fromCharCode(0x3400) + '-' + String.fromCharCode(0x9fff) + ']');
+  await page.evaluate(() => { location.hash = '#/settings'; });
+  await page.waitForTimeout(900);
+  await page.evaluate(() => {
+    const sel = [...document.querySelectorAll('.settings__select')]
+      .find((s) => [...s.options].some((o) => o.value === 'en'));
+    sel.value = 'en';
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  check('切英文后设置页重建完成', await waitSettingsSettled(page));
+  const langState = await page.evaluate(() => {
+    const secs = [...document.querySelectorAll('.settings__section')];
+    const pick = (sel) => [...document.querySelectorAll(sel)].map((n) => n.textContent.trim()).filter(Boolean);
+    return {
+      sections: secs.length,
+      visible: secs.filter((s) => +getComputedStyle(s).opacity > 0.9).length,
+      titles: pick('.settings__title'),
+      labels: pick('.settings__item-label'),
+      descs: pick('.settings__item-desc'),
+      nav: pick('.nav__item'),
+    };
+  });
+  check('切英文后设置页仍然可见', langState.sections > 0 && langState.visible === langState.sections,
+    `${langState.visible}/${langState.sections} 区块不透明`);
+  const uiText = [...langState.titles, ...langState.labels, ...langState.descs];
+  const leftover = uiText.filter((t) => CJK.test(t));
+  check('设置页文案全量跟随语言', leftover.length === 0, leftover.slice(0, 3).join(' / '));
+  const phLeft = await page.evaluate(() => {
+    const re = new RegExp('[' + String.fromCharCode(0x3400) + '-' + String.fromCharCode(0x9fff) + ']');
+    return [...document.querySelectorAll('.settings__input')]
+      .map((n) => `${n.placeholder}|${n.getAttribute('aria-label') || ''}`)
+      .filter((s) => re.test(s));
+  });
+  check('输入框提示语跟随语言', phLeft.length === 0, phLeft.slice(0, 2).join(' / '));
+  check('侧边栏跟随语言', langState.nav.every((t) => !CJK.test(t)), langState.nav.join(' '));
+  await shot(page, '17-settings-en');
+
+  await page.evaluate(() => {
+    const sel = [...document.querySelectorAll('.settings__select')]
+      .find((s) => [...s.options].some((o) => o.value === 'zh-CN'));
+    sel.value = 'zh-CN';
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  check('切回简体后设置页重建完成', await waitSettingsSettled(page));
+  const backZh = await page.evaluate(() => [...document.querySelectorAll('.settings__title')].map((n) => n.textContent.trim()));
+  check('切回简体后原文还原', backZh.length > 0 && backZh.every((t) => CJK.test(t)), backZh.slice(0, 2).join(' '));
+  const backPh = await page.evaluate(() => [...document.querySelectorAll('.settings__input')].map((n) => n.placeholder || ''));
+  check('切回简体后输入框提示语还原',
+    backPh.some((s) => s.includes('留空')) && !backPh.some((s) => /leave blank|e\.g\./.test(s)),
+    backPh.filter(Boolean).join(' | ').slice(0, 70));
+
+  // ---------- 歌词翻译 ----------
+  const badCfg = await apiPost('/api/translate/config', { baseUrl: '127.0.0.1:1/v1', model: 'x', apiKey: 'k' });
+  check('拒绝非法翻译服务地址', badCfg.code === 400, badCfg.msg || '');
+  await apiPost('/api/translate/config', {
+    baseUrl: `http://127.0.0.1:${STUB_PORT}/v1`, model: 'stub-mini', apiKey: 'sk-never-leak',
+  });
+  const trState = await apiGet('/api/translate/state');
+  check('状态接口不回显密钥',
+    trState.data.configured === true && !JSON.stringify(trState).includes('sk-never-leak'),
+    JSON.stringify(trState.data));
+  // 缓存按 歌曲id+语言+原文 落盘，用一次性 id 保证每次运行都能走到真实的外部调用
+  const probeId = `uitest-${Date.now()}`;
+  const t1 = await apiPost('/api/translate', { id: probeId, lines: ['夜色像潮水漫过窗台'], to: 'en' });
+  const t2 = await apiPost('/api/translate', { id: probeId, lines: ['夜色像潮水漫过窗台'], to: 'en' });
+  check('按需调用翻译服务', t1.code === 0 && t1.data.from === 'ai' && String(t1.data.lines[0]).startsWith('T:'),
+    `${t1.data && t1.data.from} / ${t1.data && t1.data.lines[0]}`);
+  check('同一首二次请求命中缓存', t2.code === 0 && t2.data.from === 'cache' && stubHits === 1,
+    `${t2.data && t2.data.from}，外部调用 ${stubHits} 次`);
+  check('密钥随请求发给用户自己的服务', stubAuth === 'Bearer sk-never-leak', stubAuth.slice(0, 18));
+
+  await page.click('.nav__item[data-route="discover"]');
+  await page.waitForTimeout(900);
+  await page.locator('.pl-card').first().click();
+  await page.waitForTimeout(1500);
+  const rowIds = await page.evaluate(() => [...document.querySelectorAll('.track[data-track-id]')].map((n) => n.dataset.trackId));
+  const probed = [];
+  for (const id of rowIds.slice(0, 30)) {
+    const r = await apiGet(`/api/lyric?id=${encodeURIComponent(id)}`);
+    // 有些歌连原文歌词都没有，那种样本测不到翻译入口
+    const lrc = String((r && r.lrc && r.lrc.lyric) || '').replace(/\[[^\]]*\]/g, '').trim();
+    probed.push({ id, lrc: !!lrc, has: !!(r && r.tlyric && r.tlyric.lyric) });
+    if (probed.some((p) => p.lrc && p.has) && probed.some((p) => p.lrc && !p.has)) break;
+  }
+  const cloudSample = probed.find((p) => p.lrc && p.has);
+  const bareSample = probed.find((p) => p.lrc && !p.has);
+  await page.evaluate(() => { window.__guman.store.set({ lyricLang: 'both' }); });
+
+  if (cloudSample) {
+    await page.locator(`.track[data-track-id="${cloudSample.id}"]`).click();
+    await page.waitForTimeout(2200);
+    await page.click('#btnLyric');
+    await page.waitForTimeout(1600);
+    const cloud = await page.evaluate(() => ({
+      lines: document.querySelectorAll('.lyric-line').length,
+      trans: document.querySelectorAll('.lyric-line__trans').length,
+      from: window.__guman.player.lyricTransFrom,
+      ask: document.querySelectorAll('.lyric-trans-ask').length,
+    }));
+    check('官方译文直接双语显示', cloud.trans > 0 && cloud.from === 'cloud' && cloud.ask === 0,
+      `${cloud.trans}/${cloud.lines} 行有译文，来源 ${cloud.from}`);
+    await shot(page, '18-lyric-cloud-trans');
+    await page.keyboard.press('Escape');
+  } else {
+    check('官方译文直接双语显示', true, '样本里没有带 tlyric 的歌曲，跳过');
+  }
+
+  // 只看译文：不再叠加双语子行（走 selectRow 同款事件契约）
+  if (cloudSample) {
+    await page.evaluate(() => {
+      window.__guman.store.set({ lyricLang: 'trans' });
+      window.dispatchEvent(new CustomEvent('guman:setting', { detail: { key: 'lyricLang', value: 'trans' } }));
+    });
+    await page.waitForTimeout(900);
+    await page.click('#btnLyric');
+    await page.waitForTimeout(1200);
+    const only = await page.evaluate(() => ({
+      sub: document.querySelectorAll('.lyric-line__trans').length,
+      latin: [...document.querySelectorAll('.lyric-line')].filter((n) => /[A-Za-z]{3}/.test(n.textContent)).length,
+      ask: document.querySelectorAll('.lyric-trans-ask').length,
+    }));
+    check('只看译文时不再叠加原文', only.sub === 0 && only.latin > 0 && only.ask === 0,
+      `译文 ${only.latin} 行 / 双语子行 ${only.sub} 个`);
+    await page.keyboard.press('Escape');
+    await page.evaluate(() => { window.__guman.store.set({ lyricLang: 'both' }); });
+    await page.waitForTimeout(400);
+  }
+
+  if (bareSample) {
+    await page.locator(`.track[data-track-id="${bareSample.id}"]`).click();
+    await page.waitForTimeout(2200);
+    await page.click('#btnLyric');
+    await page.waitForTimeout(1600);
+    const before = await page.evaluate(() => ({
+      lines: document.querySelectorAll('.lyric-line').length,
+      trans: document.querySelectorAll('.lyric-line__trans').length,
+      ask: document.querySelectorAll('.lyric-trans-ask').length,
+    }));
+    check('无译文时给出翻译入口', before.ask === 1 && before.trans === 0 && before.lines > 0,
+      `${before.lines} 行 / 按钮 ${before.ask} 个 / 译文 ${before.trans} 行`);
+    if (before.ask === 1) {
+      await page.locator('.lyric-trans-ask').click();
+      await page.waitForFunction(() => document.querySelectorAll('.lyric-line__trans').length > 0, null, { timeout: 15000 })
+        .catch(() => {});
+    }
+    const after = await page.evaluate(() => ({
+      trans: document.querySelectorAll('.lyric-line__trans').length,
+      sample: document.querySelector('.lyric-line__trans')?.textContent || '',
+      from: window.__guman.player.lyricTransFrom,
+    }));
+    check('点击后按需生成译文', after.trans > 0 && after.from === 'ai' && after.sample.startsWith('T:'),
+      `${after.trans} 行 / ${after.sample.slice(0, 20)}`);
+    await shot(page, '19-lyric-ai-trans');
+    const hitsFirst = stubHits;
+
+    // 换一首再切回来：译文应来自本地缓存，不再产生外部调用
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(600);
+    if (cloudSample) {
+      await page.locator(`.track[data-track-id="${cloudSample.id}"]`).click();
+      await page.waitForTimeout(2000);
+      await page.locator(`.track[data-track-id="${bareSample.id}"]`).click();
+      await page.waitForTimeout(2000);
+      await page.click('#btnLyric');
+      await page.waitForTimeout(1500);
+      const again = await page.evaluate(() => ({
+        ask: document.querySelectorAll('.lyric-trans-ask').length,
+        trans: document.querySelectorAll('.lyric-line__trans').length,
+      }));
+      let cached = { trans: 0, from: '' };
+      if (again.ask === 1 && again.trans === 0) {
+        await page.locator('.lyric-trans-ask').click();
+        await page.waitForFunction(() => document.querySelectorAll('.lyric-line__trans').length > 0, null, { timeout: 15000 })
+          .catch(() => {});
+        cached = await page.evaluate(() => ({
+          trans: document.querySelectorAll('.lyric-line__trans').length,
+          from: window.__guman.player.lyricTransFrom,
+        }));
+      }
+      // 第二次点同一首必须吃本地缓存：外部调用数不再增长
+      check('重进同一首走本地缓存', cached.trans > 0 && cached.from === 'ai' && stubHits === hitsFirst,
+        `外部调用 ${hitsFirst} → ${stubHits} 次，译文 ${cached.trans} 行`);
+    }
+    await page.keyboard.press('Escape');
+  } else {
+    check('无译文时给出翻译入口', true, '样本里每首歌都带 tlyric，跳过');
+    check('点击后按需生成译文', true, '跳过');
+  }
+  await page.evaluate(() => { window.__guman.store.set({ lyricLang: 'off' }); });
 
   // ---------- 迷你模式 ----------
   await page.keyboard.press('m');
@@ -289,5 +530,6 @@ const shot = async (page, name) => {
   failed.forEach((f) => console.log(`❌ ${f.name} — ${f.detail}`));
   console.log('运行时错误:', errors.length ? '\n' + errors.join('\n') : '无');
   await browser.close();
+  stub.close();
   process.exit(failed.length || errors.length ? 1 : 0);
 })().catch((e) => { console.error('TEST CRASHED:', e); process.exit(1); });

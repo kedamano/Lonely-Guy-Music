@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  windows:
+    name: 语法检查 + 单测 + 打包 (Windows)
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 配置 Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 语法检查（主进程/渲染层/脚本）
+        run: |
+          for f in main.js main-log.js preload.js assets/icon.js server/*.js renderer/js/*.js scripts/*.js; do
+            node --check "$f" || { echo "语法错误: $f"; exit 1; }
+          done
+          echo "语法检查通过"
+
+      - name: 代理机制单元测试
+        run: node scripts/proxy-check.js
+
+      - name: 生成字体资源
+        run: npm run fonts
+
+      - name: 打包安装包
+        run: npm run dist
+
+      - name: 上传安装包产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: guman-music-windows
+          path: dist/*.exe
+          if-no-files-found: error
+
+# 说明：UI 回归（scripts/ui-smoke.js 等）依赖网易云接口可达，
+# 在 GitHub Runner 上不稳定，因此不在 CI 中执行；请在本地 npm start 后跑：
+#   node scripts/ui-smoke.js
+#   node scripts/search-guide-check.js

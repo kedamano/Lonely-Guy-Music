@@ -12,3 +12,18 @@ userData/
 # 日志与临时文件
 *.log
 *.tmp
+
+# 本地临时调试目录与日志
+.tmp_*
+
+# 构建产物与发布前清理目录
+dist/
+.tmp_ui/
+.tmp_ui2/
+_lx_extract/
+scripts/shots/
+scripts/*shot*.png
+
+# 构建资源仅保留图标（其余由 npm run icons 生成）
+build/*
+!build/icon.ico

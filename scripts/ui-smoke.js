@@ -16,7 +16,7 @@ function check(name, ok, detail = '') {
   page.on('response', (r) => { if (r.status() >= 400) errors.push(`[http ${r.status()}] ${r.url().slice(0, 120)}`); });
 
   // ---------- 1. 启动与模式徽标 ----------
-  await page.goto(process.env.BASE_URL || 'http://localhost:3000/', { waitUntil: 'networkidle' });
+  await page.goto(process.env.BASE_URL || `http://localhost:${process.env.HOST_PORT || 3100}/`, { waitUntil: 'networkidle' });
   await page.waitForTimeout(1500);
   const badge1 = await page.locator('#apiMode').textContent();
   await page.waitForTimeout(12000); // 等网易云探测完成
@@ -195,12 +195,12 @@ function check(name, ok, detail = '') {
   await page.click('.nav__item[data-route="settings"]');
   await page.waitForTimeout(600);
   const selCount = await page.locator('.settings__select').count();
-  check('设置页渲染', selCount === 3, `${selCount} 个下拉（音质/歌词背景/语言）`);
+  check('设置页渲染', selCount === 4, `${selCount} 个下拉（音质/歌词背景/语言/歌词显示）`);
   const srcCount = await page.locator('.sourcecard').count();
   check('设置页显示音源区域', (await page.locator('.settings__section').count()) >= 3, `${srcCount} 张音源卡`);
 
-  // 语言切换：简体 → English，界面文案应变换
-  const langSel = page.locator('.settings__select[aria-label="语言"]');
+  // 语言切换：简体 → English，界面文案应变换（用 data-key 定位，避免 aria-label 被翻译后失效）
+  const langSel = page.locator('.settings__select[data-key="lang"]');
   check('设置页有语言选项', (await langSel.count()) === 1);
   if ((await langSel.count()) === 1) {
     await langSel.selectOption('en');
@@ -283,11 +283,12 @@ function check(name, ok, detail = '') {
   check('设置页有网络代理配置项', (await proxyInput.count()) === 1);
   if ((await proxyInput.count()) === 1) {
     const initialProxy = await proxyInput.inputValue();
-    const proxyStatus = await page.locator('.settings__proxystatus').textContent();
+    const proxyStatus = page.locator('.settings__proxystatus', { hasText: '代理' });
+    const proxyStatusText = await proxyStatus.textContent();
     if (initialProxy) {
-      check('已配置代理时状态正确显示', new RegExp(initialProxy.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).test(proxyStatus), proxyStatus);
+      check('已配置代理时状态正确显示', new RegExp(initialProxy.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).test(proxyStatusText), proxyStatusText);
     } else {
-      check('代理默认状态为直连', /未使用代理/.test(proxyStatus), proxyStatus);
+      check('代理默认状态为直连', /未使用代理/.test(proxyStatusText), proxyStatusText);
     }
     const saveProxy = page.locator('.settings__addrow .btn--primary', { hasText: '保存代理' });
     // 空保存 = 关闭代理
@@ -362,6 +363,12 @@ function check(name, ok, detail = '') {
   const failed = results.filter((r) => !r.ok);
   console.log(`通过 ${results.length - failed.length}/${results.length}`);
   failed.forEach((f) => console.log(`❌ ${f.name} — ${f.detail}`));
-  console.log('运行时错误:', errors.length ? '\n' + errors.join('\n') : '无');
+  // 非法代理地址这类负向用例本来就该回 400，单独列出，别混进运行时错误
+  const EXPECTED = ['/api/sources/proxy', 'status of 400'];
+  const expected = errors.filter((e) => EXPECTED.some((s) => e.includes(s)));
+  const real = errors.filter((e) => !EXPECTED.some((s) => e.includes(s)));
+  console.log('运行时错误:', real.length ? '\n' + real.join('\n') : '无');
+  if (expected.length) console.log(`预期内的负向用例响应: ${expected.length} 条`);
   await browser.close();
+  process.exit(failed.length || real.length ? 1 : 0);
 })().catch((e) => { console.error('TEST CRASHED:', e); process.exit(1); });

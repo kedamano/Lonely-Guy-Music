@@ -81,29 +81,35 @@ function songUrl(id) {
 }
 
 const LYRIC_POOL = [
-  '夜色像潮水漫过窗台',
-  '我把心事折成纸船',
-  '路灯把影子拉得很长',
-  '风穿过空荡的走廊',
-  '你说过的话还在回响',
-  '时间停在某个瞬间',
-  '我们就这样慢慢走远',
-  '耳机里循环着那首歌',
-  '城市的灯一盏盏熄灭',
-  '而我还在等一个答案',
+  ['夜色像潮水漫过窗台', 'Night floods the windowsill like tide'],
+  ['我把心事折成纸船', 'I fold my thoughts into paper boats'],
+  ['路灯把影子拉得很长', 'Streetlights stretch the shadows long'],
+  ['风穿过空荡的走廊', 'Wind walks the empty corridor'],
+  ['你说过的话还在回响', 'Your words still echo here'],
+  ['时间停在某个瞬间', 'Time stops at a single moment'],
+  ['我们就这样慢慢走远', 'We drift apart so slowly'],
+  ['耳机里循环着那首歌', 'That song loops inside my headphones'],
+  ['城市的灯一盏盏熄灭', 'The city lights go out one by one'],
+  ['而我还在等一个答案', 'And I am still waiting for an answer'],
 ];
 
+// 网易云的 tlyric 常常只翻译其中几行，这里也保留缺口以便验证降级显示
 function buildLyric(id) {
   const rand = rng(id + 7);
-  const lines = LYRIC_POOL.slice().sort(() => rand() - 0.5).slice(0, 8);
+  const picks = LYRIC_POOL.slice().sort(() => rand() - 0.5).slice(0, 8);
   let t = 4;
-  const body = lines.map((line) => {
+  const lrc = [];
+  const tlyric = [];
+  picks.forEach((pair, i) => {
     const mm = String(Math.floor(t / 60)).padStart(2, '0');
     const ss = String(Math.floor(t % 60)).padStart(2, '0');
+    const stamp = `[${mm}:${ss}.00]`;
     t += 4 + Math.floor(rand() * 3);
-    return `[${mm}:${ss}.00]${line}`;
-  }).join('\n');
-  return `[ti:示例歌曲 ${id}]\n[ar:孤男音乐]\n[al:离线示例]\n${body}`;
+    lrc.push(stamp + pair[0]);
+    if (i % 4 !== 2) tlyric.push(stamp + pair[1]);
+  });
+  const head = `[ti:示例歌曲 ${id}]\n[ar:孤男音乐]\n[al:离线示例]\n`;
+  return { lrc: head + lrc.join('\n'), tlyric: tlyric.join('\n') };
 }
 
 function playlistToList(p) {
@@ -199,7 +205,13 @@ const routes = {
     return { data };
   },
 
-  '/lyric': async (q) => ({ lrc: { version: 0, lyric: buildLyric(Number(q.id) || 1) }, tlyric: { version: 0, lyric: '' }, code: 200 }),
+  '/lyric': async (q) => {
+    const id = Number(q.id) || 1;
+    const l = buildLyric(id);
+    // 三分之一的示例歌曲没有译文，用来验证「翻译这首歌」的兜底入口
+    const t = id % 3 === 0 ? '' : l.tlyric;
+    return { lrc: { version: 0, lyric: l.lrc }, tlyric: { version: 0, lyric: t }, code: 200 };
+  },
 
   // 每日推荐（离线用示例曲库凑一份，保证首屏在断网时也不空）
   // 键名与上游一致：/recommend/songs 与 /recommend/resource 都返回 recommend 数组

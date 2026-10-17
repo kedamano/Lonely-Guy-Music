@@ -65,12 +65,213 @@ const ZH_TW = {
   中: '中', 左: '左', 右: '右', 上一页: '上一頁', 下一页: '下一頁',
   // 分页单位
   项: '項', 首: '首', 首歌曲: '首歌曲', 个歌单: '個歌單',
-  保存代理: '儲存代理', 从URL安装: '從URL安裝', 导入本地: '匯入本地', 重试: '重試',
+  保存代理: '儲存代理', 从URL安装: '從URL安裝', 导入本地: '匯入本地',
   快捷键: '快速鍵', 快退: '快退', 快进: '快進', 秒: '秒', 打开歌词: '開啟歌詞',
-  播放队列抽屉: '播放佇列抽屜', 清空: '清空', 关闭声场: '關閉聲場', 关闭队列: '關閉佇列',
+  播放队列抽屉: '播放佇列抽屜', 关闭声场: '關閉聲場', 关闭队列: '關閉佇列',
   外观: '外觀', 睡眠定时: '睡眠定時', 图形均衡器: '圖形等化器', 扁平: '扁平', 实时频谱: '即時頻譜',
-  播放结束淡出关闭: '播放結束淡出關閉', 信号琥珀: '訊號琥珀',
-};
+  播放结束淡出关闭: '播放結束淡出關閉',
+  // 账号与登录
+  登录网易云账号: '登入網易雲帳號', 匿名账号: '匿名帳號', 已登录: '已登入', 未登录: '未登入',
+  '游客态 · 建议在 App 内登录主账号': '訪客態 · 建議在 App 內登入主帳號',
+  '黑胶会员 · 已同步': '黑膠會員 · 已同步', '网易云用户 · 已同步': '網易雲用戶 · 已同步',
+  '当前是网易云游客账号，收藏与推荐可用，但没有昵称头像': '目前是網易雲訪客帳號，收藏與推薦可用，但沒有暱稱與頭像',
+  扫码登录网易云: '掃碼登入網易雲', '曲库离线，暂无法登录': '曲庫離線，暫無法登入',
+  '网易云接口不可达，无法登录': '網易雲介面不可達，無法登入', 每日推荐: '每日推薦',
+  我收藏的歌单: '我收藏的歌單', 账号信息: '帳號資訊', 退出登录: '登出', 昵称: '暱稱', 等级: '等級',
+  会员: '會員', 黑胶会员: '黑膠會員', 普通用户: '普通用戶', 账号类型: '帳號類型',
+  '游客态（网易云未返回资料页）': '訪客態（網易雲未回傳資料頁）',
+  '这个账号是在网易云 App 里以游客态扫码的：收藏、订阅、每日推荐都可用，但昵称头像不存在。想要个性化推荐，请在 App 内登录主账号后回来重新扫码。':
+    '這個帳號是在網易雲 App 裡以訪客態掃碼的：收藏、訂閱、每日推薦都可用，但暱稱頭像不存在。想要個人化推薦，請在 App 內登入主帳號後回來重新掃碼。',
+  '个性签名：': '個人簽名：',
+  '登录凭证保存在本机，不会发送到界面层。': '登入憑證保存在本機，不會傳送到介面層。',
+  知道了: '知道了', 已退出登录: '已登出', 退出失败: '登出失敗',
+  '二维码已过期，正在刷新…': 'QR Code 已過期，正在重新整理…',
+  '等待扫码 · 请用网易云音乐 App 扫二维码': '等待掃碼 · 請用網易雲音樂 App 掃描 QR Code',
+  '已扫码 · 请在手机上确认登录': '已掃描 · 請在手機上確認登入', 登录成功: '登入成功',
+  '网易云接口不可达，暂时无法登录': '網易雲介面不可達，暫時無法登入',
+  正在生成二维码: '正在產生 QR Code', '扫码并在手机上确认后自动登录；凭证仅保存在本机用户目录。':
+    '掃描並在手機上確認後自動登入；憑證僅保存在本機使用者目錄。',
+  扫码登录: '掃碼登入', '打开网易云音乐 App → 我的 → 右上角扫码。': '開啟網易雲音樂 App → 我的 → 右上角掃碼。',
+  取消: '取消', 未取得登录密钥: '未取得登入金鑰', 登录二维码: '登入 QR Code',
+  二维码生成失败: 'QR Code 產生失敗', 重新生成: '重新產生', 登录状态查询失败: '登入狀態查詢失敗', 网易云用户: '網易雲用戶', 等待扫码: '等待掃碼',
+  换主账号登录: '改登入主帳號', 不再提示: '不再提示',
+  // 首屏 / 发现
+  声场面板: '聲場面板', '播放/暂停': '播放/暫停', 循环模式: '循環模式',
+  '把任意设备的扬声器，变成一台声场仪表盘。在线曲库 × 本地音乐 × 实时频谱。':
+    '把任何裝置的喇叭，變成一台聲場儀表板。線上曲庫 × 本地音樂 × 即時頻譜。',
+  '在<em>深夜</em><br>听见自己': '在<em>深夜</em><br>聽見自己',
+  '聚合精选歌单，一键播放；打开声场面板，实时频谱、图形均衡器与睡眠定时都已就位。':
+    '彙整精選歌單，一鍵播放；開啟聲場面板，即時頻譜、圖形等化器與睡眠定時都已就緒。',
+  '精选歌单 <span class="section__sub">每日更新</span>': '精選歌單 <span class="section__sub">每日更新</span>',
+  '继续聆听 <span class="section__sub">最近播放</span>': '繼續聆聽 <span class="section__sub">最近播放</span>',
+  歌单加载失败: '歌單載入失敗', 推荐新歌: '推薦新歌', 根据你的收听历史生成: '依你的收聽歷史產生',
+  网易云近期上新: '網易雲近期上新', 换一批: '換一批', 登录网易云解锁属于你的每日推荐: '登入網易雲，解鎖属于你的每日推薦',
+  '登录网易云，解锁属于你的每日推荐': '登入網易雲，解鎖属于你的每日推薦',
+  按风格浏览热门歌单: '依風格瀏覽熱門歌單', '按风格浏览热门歌单。': '依風格瀏覽熱門歌單。',
+  '实时搜索网易云曲库：输入即搜，回车立即执行。': '即時搜尋網易雲曲庫：輸入即搜，Enter 立即執行。',
+  '想听点什么？歌曲 / 歌单 / 艺人': '想聽點什麼？歌曲 / 歌單 / 藝人',
+  歌曲: '歌曲', 歌单: '歌單', 搜索失败: '搜尋失敗',
+  '换一个关键词，或者试试下方热门搜索。': '換一個關鍵字，或試試下方熱門搜尋。',
+  '换一个关键词，或切到歌曲搜索。': '換一個關鍵字，或切到歌曲搜尋。',
+  搜歌曲: '搜歌曲',
+  // 本地音乐
+  '导入的曲目登记在本机清单里，重启后依然在。': '匯入的曲目登記在本機清單裡，重啟後依然在。',
+  '导入本地音频，用同一套播放器与声场播放。': '匯入本地音訊，用同一套播放器與聲場播放。',
+  把音频文件拖到这里: '把音訊檔案拖到這裡',
+  '·  支持 mp3 / flac / wav / ogg / m4a / aac': '·  支援 mp3 / flac / wav / ogg / m4a / aac',
+  '把 mp3 / flac 等文件拖进上方区域，或通过按钮导入。导入后即可用均衡器与频谱播放。':
+    '把 mp3 / flac 等檔案拖進上方區域，或透過按鈕匯入。匯入後即可用等化器與頻譜播放。',
+  打开文件对话框失败: '開啟檔案對話框失敗', 打开目录对话框失败: '開啟目錄對話框失敗',
+  '正在扫描目录，请稍候…': '正在掃描目錄，請稍候…', 扫描失败: '掃描失敗', 目录不可读: '目錄不可讀',
+  导入失败: '匯入失敗', 无法读取所选文件: '無法讀取所選檔案', 没有可导入的音频文件: '沒有可匯入的音訊檔案',
+  这些曲目已经在曲库里了: '這些曲目已經在曲庫裡了', 本地文件: '本地檔案',
+  '浏览器环境无法扫描目录，请改用文件选择': '瀏覽器環境無法掃描目錄，請改用檔案選擇',
+  // 我的 / 队列 / 收藏 / 歌单
+  历史: '歷史', 队列: '佇列', 我的歌单: '我的歌單', 订阅歌单: '訂閱歌單',
+  '收藏、播放历史、当前队列与本地歌单。': '收藏、播放歷史、目前佇列與本地歌單。',
+  播放队列是空的: '播放佇列是空的',
+  '在曲目行悬停点击＋，或播放任意歌单来填充队列。': '在曲目列游標懸停點擊＋，或播放任意歌單來填充佇列。',
+  队列已清空: '佇列已清空',
+  '在播放条或任意曲目行点击 ♥，喜欢的歌会出现在这里。': '在播放列或任意曲目列點擊 ♥，喜歡的歌會出現在這裡。',
+  '播放过的歌曲会自动记录在这里。': '播放過的歌曲會自動記錄在這裡。',
+  已移除: '已移除', 打开: '開啟', 重命名: '重新命名', 删除歌单: '刪除歌單', 新建歌单: '新建歌單',
+  歌单名称: '歌單名稱', '例如：深夜写代码': '例如：深夜寫程式', 创建: '建立',
+  歌单名称不能为空: '歌單名稱不能為空', 重命名歌单: '重新命名歌單', 保存: '儲存', 已重命名: '已重新命名',
+  已删除歌单: '已刪除歌單', "新建歌单…": '新建歌單…', 这首歌已经在歌单里了: '這首歌已經在歌單裡了',
+  还没有本地歌单: '還沒有本地歌單',
+  '在任何曲目上右键 → 加入歌单，就能把散落的歌收进一个袋子里；歌单只保存在本机，重启也在。':
+    '在任意曲目上右鍵 → 加入歌單，就能把散落的歌收進一個袋子裡；歌單只保存在本機，重啟也在。',
+  新建第一个歌单: '新建第一個歌單', 歌单不存在或已删除: '歌單不存在或已刪除', 回到我的: '回到我的',
+  这些本地曲目已不在曲库: '這些本地曲目已不在曲庫', 这个歌单还是空的: '這個歌單還是空的',
+  '本地文件被移动或删除后无法播放，可在「本地音乐」重新导入。':
+    '本地檔案被移動或刪除後無法播放，可在「本地音樂」重新匯入。',
+  '在任意曲目行右键 → 加入歌单，把歌收进来。': '在任意曲目列右鍵 → 加入歌單，把歌收進來。',
+  去本地音乐: '去本地音樂', 已从歌单移除: '已從歌單移除', 移出歌单: '移出歌單', 下一首播放: '下一首播放',
+  加入歌单: '加入歌單', '加入歌单…': '加入歌單…', 本机: '本機', 自建: '自建', 云端: '雲端',
+  同步到网易云: '同步到網易雲', 已收藏歌单: '已收藏歌單', 已取消收藏歌单: '已取消收藏歌單',
+  网易云端同步失败: '網易雲端同步失敗', 接口不可用: '介面不可用', 同步失败: '同步失敗',
+  请先登录网易云账号: '請先登入網易雲帳號',
+  账号信息缺少请在账号菜单里退出后重新扫码: '帳號資訊缺少 UID，請在帳號選單裡登出後重新掃碼',
+  '账号信息缺少 UID，请在账号菜单里退出后重新扫码': '帳號資訊缺少 UID，請在帳號選單裡登出後重新掃碼',
+  '正在拉取云端歌单…': '正在抓取雲端歌單…', 云端还没有歌单: '雲端還沒有歌單', 拉取失败: '抓取失敗',
+  同时取消云端: '同時取消雲端', 只删本机: '只刪本機', 云端取消失败: '雲端取消失敗',
+  已从本机与网易云取消收藏: '已從本機與網易雲取消收藏', 已从本机取消收藏: '已從本機取消收藏',
+  导入歌单: '匯入歌單', 网易云歌单链接或: '網易雲歌單連結或 ID', '网易云歌单链接或 ID': '網易雲歌單連結或 ID',
+  没有识别到歌单: '沒有識別到歌單 ID', '没有识别到歌单 ID': '沒有識別到歌單 ID',
+  '正在读取歌单…': '正在讀取歌單…', 歌单不存在或无权访问: '歌單不存在或無權存取', 歌单不存在: '歌單不存在',
+  全部只存在本机点拉取云端合并账号里的歌单: '全部只存在本機，點「抓取雲端」合併帳號裡的歌單',
+  '全部只存在本机，点「拉取云端」合并账号里的歌单': '全部只存在本機，點「抓取雲端」合併帳號裡的歌單',
+  '登录后可与网易云收藏互相同步': '登入後可與網易雲收藏互相同步', 拉取云端歌单: '抓取雲端歌單',
+  导入歌单链接: '匯入歌單連結', 还没有收藏在线歌单: '還沒有收藏線上歌單',
+  '点「拉取云端歌单」把你网易云账号里的歌单一次搬进来；也可以粘贴链接或去音乐馆收藏。':
+    '點「抓取雲端歌單」把你網易雲帳號裡的歌單一次搬進來；也可以貼上連結或去音樂館收藏。',
+  '在歌单详情页点「收藏歌单」，或粘贴网易云歌单链接导入。登录后可以与网易云互相同步。':
+    '在歌單詳情頁點「收藏歌單」，或貼上網易雲歌單連結匯入。登入後可與網易雲互相同步。',
+  登录网易云: '登入網易雲', 去音乐馆: '去音樂館', 收藏歌单: '收藏歌單', 试试其他歌单: '試試其他歌單。',
+  '试试其他歌单。': '試試其他歌單。', 已在播放队列中: '已在播放佇列中', 暂无可播放内容: '暫無可播放內容',
+  随机播放失败: '隨機播放失敗', 播放列表已结束: '播放清單已結束', 已淡出并暂停: '已淡出並暫停',
+  // 歌词 / 播放条
+  '专辑 · {album}': '專輯 · {album}', 本地音乐暂无歌词: '本地音樂暫無歌詞',
+  '暂无歌词 · 请欣赏旋律': '暫無歌詞 · 請欣賞旋律', 上下拖拽调整播放进度: '上下拖曳調整播放進度',
+  '播放歌曲或点击曲目行的＋加入队列。': '播放歌曲或點擊曲目列的＋加入佇列。',
+  '随机播放：开': '隨機播放：開', '随机播放：关': '隨機播放：關', 播放队列为空: '播放佇列為空',
+  随机播放已开启: '隨機播放已開啟', 随机播放已关闭: '隨機播放已關閉',
+  下载功能已在设置下载设置中关闭: '下載功能已在設定 → 下載設定中關閉',
+  '下载功能已在设置 → 下载设置中关闭': '下載功能已在設定 → 下載設定中關閉',
+  无法获取该歌曲的下载地址: '無法取得該歌曲的下載網址', '下载失败（HTTP': '下載失敗（HTTP',
+  已连接网易云曲库: '已連線網易雲曲庫', '网易云接口暂不可达，使用内置示例曲库': '網易雲介面暫不可達，使用內建示例曲庫',
+  '孤男音乐 · 桌面声场': '孤男音樂 · 桌面聲場', 解锁: '解鎖', '锁定（鼠标穿透）': '鎖定（滑鼠穿透）',
+  音源与官方接口均无可用地址可能无版权或已下架: '音源與官方介面均無可用網址（可能無版權或已下架）',
+  '音源与官方接口均无可用地址（可能无版权或已下架）': '音源與官方介面均無可用網址（可能無版權或已下架）',
+  播放被浏览器拦截: '播放被瀏覽器封鎖',
+  '音频地址无效或格式不支持（音源可能已失效）': '音訊網址無效或格式不支援（音源可能已失效）',
+  '网络中断，请稍后重试': '網路中斷，請稍後重試', 音频解码失败: '音訊解碼失敗', 被浏览器拦截: '被瀏覽器封鎖',
+  'FLAC 无损': 'FLAC 無損', 超大: '超大', '歌曲名 - 艺术家': '歌曲名 - 藝人', '艺术家 - 歌曲名': '藝人 - 歌曲名',
+  空格: '空白鍵', '播放 / 暂停': '播放 / 暫停', '快退 / 快进 5 秒': '快退 / 快進 5 秒', '音量 ±5%': '音量 ±5%',
+  关闭浮层: '關閉浮層', 减小字号: '縮小字型', 增大字号: '放大字型', 关闭桌面歌词: '關閉桌面歌詞',
+  当前: '目前', 更改: '變更', 确定: '確定', 输入: '輸入', 对话框: '對話框', 确认操作: '確認操作',
+  换个分类或关键词试试: '換個分類或關鍵字試試。', '换个分类或关键词试试。': '換個分類或關鍵字試試。',
+  // 带全角标点的提示语变体（tr 按整句精确匹配，必须原样收录）
+  '退出失败：': '登出失敗：', '正在生成二维码…': '正在產生 QR Code…', '已登录：': '已登入：',
+  '等待扫码…': '等待掃碼…', 未命名歌单: '未命名歌單', 未知艺人: '未知藝人', 未知曲目: '未知曲目',
+  当前是网易云游客账号: '目前是網易雲訪客帳號',
+  '收藏、订阅、播放记录都能正常用，但网易云没有给这个账号昵称和头像，个性化推荐也基本是空的。':
+    '收藏、訂閱、播放記錄都能正常用，但網易雲沒有給這個帳號暱稱與頭像，個人化推薦也基本是空的。',
+  '请在手机网易云 App 里确认已登录主账号，再回来重新扫码。':
+    '請在手機網易雲 App 裡確認已登入主帳號，再回來重新掃碼。',
+  '打开文件对话框失败：': '開啟檔案對話框失敗：', '打开目录对话框失败：': '開啟目錄對話框失敗：',
+  '扫描失败：': '掃描失敗：', '导入失败：': '匯入失敗：', '网易云端同步失败：': '網易雲端同步失敗：',
+  '同步失败：': '同步失敗：', '拉取失败：': '抓取失敗：', '云端取消失败：': '雲端取消失敗：',
+  '随机播放失败：': '隨機播放失敗：', '下载失败：': '下載失敗：', '设置音质失败：': '設定音質失敗：',
+  '选择目录失败：': '選擇目錄失敗：', '保存失败：': '儲存失敗：', '安装失败：': '安裝失敗：',
+  '切换失败：': '切換失敗：', '删除失败：': '刪除失敗：',
+  '上下拖拽歌词行快进/快退': '上下拖曳歌詞行快進/快退', '未设置（每次询问）': '未設定（每次詢問）',
+  离线示例曲库: '離線示例曲庫', 网易: '網易', '已关闭代理（恢复直连）': '已關閉代理（恢復直連）',
+  '点击播放条封面打开的歌词大页。': '點擊播放列封面開啟的歌詞大頁。',
+  '从 URL 安装': '從 URL 安裝', 本地: '本地', 网易云: '網易雲',
+  '播放、外观、歌词、列表与下载，全部选项即时生效。': '播放、外觀、歌詞、清單與下載，全部選項即時生效。',
+  '动画、主题、窗口与字体，随时切换即时生效。': '動畫、主題、視窗與字型，隨時切換即時生效。',
+  '关闭后减少界面动效，低性能设备更流畅': '關閉後減少介面動效，低效能裝置更流暢',
+  '全站强调色，影响按钮、频谱、氛围光': '全站強調色，影響按鈕、頻譜、氛圍光',
+  '切换后整个界面立即转换，可随时切回': '切換後整個介面立即轉換，可隨時切回',
+  '搜索使用网易云元数据，播放时优先调用下方已启用的自定义音源获取真实链接；失败会自动降级到官方接口。':
+    '搜尋使用網易雲中繼資料，播放時優先呼叫下方已啟用的自訂音源取得真實連結；失敗會自動降級到官方介面。',
+  启动时自动接着播放上次的歌曲: '啟動時自動接著播放上次的歌曲',
+  播放期间系统不会进入睡眠: '播放期間系統不會進入睡眠',
+  再次播放同一首歌时恢复到上次位置: '再次播放同一首歌時恢復到上次位置',
+  取链或播放失败时自动播放下一首: '取鏈或播放失敗時自動播放下一首',
+  已播放的歌词逐字高亮: '已播放的歌詞逐字高亮',
+  'Windows 任务栏图标显示播放进度': 'Windows 工作列圖示顯示播放進度',
+  "当前歌词行放大，其余行淡出": '目前歌詞行放大，其餘行淡出',
+  '歌词稍晚跟随播放进度，适合跟唱': '歌詞稍晚跟隨播放進度，適合跟唱',
+  '在桌面上显示一层置顶歌词，可锁定位置。': '在桌面上顯示一層置頂歌詞，可鎖定位置。',
+  在屏幕底部显示置顶歌词窗口: '在螢幕底部顯示置頂歌詞視窗',
+  '未播放 / 已播放 / 阴影颜色': '未播放 / 已播放 / 陰影顏色',
+  '锁定后鼠标事件穿透，不会挡住桌面操作': '鎖定後滑鼠事件穿透，不會擋住桌面操作',
+  在曲目名后标注来源平台: '在曲目名後標註來源平臺',
+  返回列表时恢复上次浏览位置: '返回列表時恢復上次瀏覽位置',
+  双击直接用当前列表替换播放队列: '雙擊直接用目前清單替換播放佇列',
+  '把在线歌曲保存到本地，文件名按下方规则生成。': '把線上歌曲儲存到本地，檔名依下方規則產生。',
+  在曲目行与歌词页显示下载按钮: '在曲目列與歌詞頁顯示下載按鈕',
+  留空则每次下载时询问保存位置: '留空則每次下載時詢問儲存位置',
+  已恢复每次询问: '已恢復每次詢問', 恢复询问: '恢復詢問',
+  '音源的网络请求默认直连，不读取系统代理。仅当你的网络必须通过代理才能访问音源接口时，才需要填写；保存后立即生效，无需重启。':
+    '音源的網路請求預設直連，不讀取系統代理。僅當你的網路必須透過代理才能存取音源介面時才需要填寫；儲存後立即生效，無需重啟。',
+  '兼容 LX Music 自定义音源脚本。导入后启用，播放时会优先用音源取链；全部失败才降级官方接口。':
+    '相容 LX Music 自訂音源腳本。匯入後啟用，播放時會優先使用音源取鏈；全部失敗才降級官方介面。',
+  '导入本地 .js': '匯入本地 .js', '正在读取音源…': '正在讀取音源…',
+  '支持系统媒体键与托盘控制。以下快捷键在非输入状态下生效。': '支援系統媒體鍵與托盤控制。以下快速鍵在非輸入狀態下生效。',
+  '在线曲库（网易云）': '線上曲庫（網易雲）',
+  '在线曲库依赖第三方接口，仅供学习研究；本地音乐与自定义音源均在本机处理。':
+    '線上曲庫依賴第三方介面，僅供學習研究；本地音樂與自訂音源均在本機處理。',
+  音源列表加载失败: '音源清單載入失敗', 暂无自定义音源: '暫無自訂音源',
+  '导入本地 .js 或从 URL 安装音源脚本。未安装时仍可使用官方接口或离线示例。':
+    '匯入本地 .js 或從 URL 安裝音源腳本。未安裝時仍可使用官方介面或離線示例。',
+  初始化失败: '初始化失敗', 当前环境不支持选择目录: '目前環境不支援選擇目錄',
+  下载路径已设置: '下載路徑已設定', '当前状态：未使用代理，音源请求直连': '目前狀態：未使用代理，音源請求直連',
+  音源脚本: '音源腳本', '正在导入音源…': '正在匯入音源…',
+  '请输入音源脚本 URL': '請輸入音源腳本 URL', '正在下载…': '正在下載…',
+  音源已启用: '音源已啟用', 音源已停用: '音源已停用', '确定删除这个音源？': '確定刪除這個音源？',
+  歌词翻译: '歌詞翻譯', 只看原文: '只看原文', 只看译文: '只看譯文', 双语对照: '雙語對照',
+  歌词显示: '歌詞顯示', 翻译这首歌: '翻譯這首歌', '正在翻译…': '正在翻譯…',
+  译文已就绪: '譯文已就緒', '翻译失败，点此重试': '翻譯失敗，點此重試',
+  '未配置翻译服务或翻译失败': '未設定翻譯服務或翻譯失敗', 翻译失败: '翻譯失敗',
+  '译文按界面语言生成：简体/繁体界面译成中文，英文界面译成英文':
+    '譯文依介面語言產生：簡體／繁體介面譯成中文，英文介面譯成英文',
+  '优先使用网易云自带的官方译文；没有译文时，点歌词页的「翻译这首歌」才会调用你配置的模型，不会自动发起外部请求。':
+    '優先使用網易雲內建的官方譯文；沒有譯文時，點歌詞頁的「翻譯這首歌」才會呼叫你設定的模型，不會自動發出外部請求。',
+  翻译服务地址: '翻譯服務地址', 翻译服务密钥: '翻譯服務金鑰', 翻译模型: '翻譯模型',
+  '模型名，如 gpt-4o-mini': '模型名，例如 gpt-4o-mini', 保存翻译服务: '儲存翻譯服務',
+  '当前状态：未配置翻译服务，只有网易云自带译文的歌曲能显示译文':
+    '目前狀態：未設定翻譯服務，只有網易雲內建譯文的歌曲能顯示譯文',
+  '已保存（留空则不修改）': '已儲存（留空則不修改）',
+  请填写服务地址与模型名: '請填寫服務地址與模型名', '请填写 API Key': '請填寫 API Key',
+  翻译服务已保存: '翻譯服務已儲存',
+  'http://127.0.0.1:7890（留空 = 不使用代理）': 'http://127.0.0.1:7890（留白 = 不使用代理）',
+  网络代理地址: '網路代理地址',
+  '输入音源脚本 URL（如 https://…/xxx.js）': '輸入音源腳本 URL（例如 https://…/xxx.js）',
+  '音源脚本 URL': '音源腳本 URL', 'URL 需以 http(s):// 开头': 'URL 需以 http(s):// 開頭',
+  清除全部最近搜索: '清除全部最近搜尋', 删除这条记录: '刪除這筆記錄', 大家都在搜: '大家都在搜'};
 
 const EN = {
   // 导航 / 侧栏
@@ -136,18 +337,245 @@ const EN = {
   中: 'Center', 左: 'Left', 右: 'Right', 上一页: 'Previous', 下一页: 'Next',
   // 分页单位
   项: 'items', 首: 'songs', 首歌曲: 'songs', 个歌单: 'playlists',
-  保存代理: 'Save Proxy', 从URL安装: 'Install from URL', 导入本地: 'Import .js', 重试: 'Retry',
+  保存代理: 'Save Proxy', 从URL安装: 'Install from URL', 导入本地: 'Import .js',
   快捷键: 'Shortcuts', 快退: 'Rewind', 快进: 'Forward', 秒: 's', 打开歌词: 'Open lyrics',
-  播放队列抽屉: 'Queue Drawer', 清空: 'Clear', 关闭声场: 'Close soundstage', 关闭队列: 'Close queue',
+  播放队列抽屉: 'Queue Drawer', 关闭声场: 'Close soundstage', 关闭队列: 'Close queue',
   外观: 'Appearance', 睡眠定时: 'Sleep Timer', 图形均衡器: 'Equalizer', 扁平: 'Flat',
-  实时频谱: 'Live Spectrum', 播放结束淡出关闭: 'Fade out then stop', 信号琥珀: 'Amber',
-};
+  实时频谱: 'Live Spectrum', 播放结束淡出关闭: 'Fade out then stop',
+  // Account & sign-in
+  登录网易云账号: 'Sign in to NetEase Music', 匿名账号: 'Anonymous account', 已登录: 'Signed in', 未登录: 'Not signed in',
+  '游客态 · 建议在 App 内登录主账号': 'Guest account · sign in with your main account in the app',
+  '黑胶会员 · 已同步': 'Vinyl member · synced', '网易云用户 · 已同步': 'NetEase user · synced',
+  '当前是网易云游客账号，收藏与推荐可用，但没有昵称头像': 'This is a NetEase guest account: favorites and recommendations work, but there is no nickname or avatar.',
+  扫码登录网易云: 'Scan to sign in to NetEase', '曲库离线，暂无法登录': 'Library is offline, sign-in unavailable',
+  '网易云接口不可达，无法登录': 'NetEase API unreachable, cannot sign in', 每日推荐: 'Daily Mix',
+  我收藏的歌单: 'My playlists', 账号信息: 'Account', 退出登录: 'Sign out', 昵称: 'Nickname', 等级: 'Level',
+  会员: 'Membership', 黑胶会员: 'Vinyl member', 普通用户: 'Standard user', 账号类型: 'Account type',
+  '游客态（网易云未返回资料页）': 'Guest (NetEase returned no profile)',
+  '这个账号是在网易云 App 里以游客态扫码的：收藏、订阅、每日推荐都可用，但昵称头像不存在。想要个性化推荐，请在 App 内登录主账号后回来重新扫码。':
+    'This account was created as a guest in the NetEase app. Favorites, subscriptions and daily mixes work, but it has no nickname or avatar. For real recommendations, sign in to your main account in the app, then scan again.',
+  '个性签名：': 'Bio: ',
+  '登录凭证保存在本机，不会发送到界面层。': 'Credentials stay on this device and never reach the interface layer.',
+  知道了: 'Got it', 已退出登录: 'Signed out', 退出失败: 'Sign-out failed',
+  '二维码已过期，正在刷新…': 'QR code expired, refreshing…',
+  '等待扫码 · 请用网易云音乐 App 扫二维码': 'Waiting for scan · use the NetEase Music app',
+  '已扫码 · 请在手机上确认登录': 'Scanned · confirm on your phone', 登录成功: 'Signed in',
+  '网易云接口不可达，暂时无法登录': 'NetEase API unreachable, sign-in unavailable',
+  正在生成二维码: 'Generating QR code', '扫码并在手机上确认后自动登录；凭证仅保存在本机用户目录。':
+    'Scan it and confirm on your phone. Credentials are stored only in this device’s user folder.',
+  扫码登录: 'Scan to sign in', '打开网易云音乐 App → 我的 → 右上角扫码。': 'Open NetEase Music → Me → scan icon at the top right.',
+  取消: 'Cancel', 未取得登录密钥: 'No login key returned', 登录二维码: 'Sign-in QR code',
+  二维码生成失败: 'Could not generate QR code', 重新生成: 'Regenerate', 登录状态查询失败: 'Sign-in status check failed',
+  网易云用户: 'NetEase user', 等待扫码: 'Waiting for scan',
+  换主账号登录: 'Use main account', 不再提示: 'Don’t ask again',
+  // Discover / hero
+  声场面板: 'Soundstage', '播放/暂停': 'Play/Pause', 循环模式: 'Repeat mode',
+  '把任意设备的扬声器，变成一台声场仪表盘。在线曲库 × 本地音乐 × 实时频谱。':
+    'Turn any speaker into a soundstage console. Online library × local files × live spectrum.',
+  '在<em>深夜</em><br>听见自己': 'Hear yourself <em>late<br>at night</em>',
+  '聚合精选歌单，一键播放；打开声场面板，实时频谱、图形均衡器与睡眠定时都已就位。':
+    'Curated playlists, one-click play. Open the soundstage for a live spectrum, graphic EQ and sleep timer.',
+  '精选歌单 <span class="section__sub">每日更新</span>': 'Featured playlists <span class="section__sub">updated daily</span>',
+  '继续聆听 <span class="section__sub">最近播放</span>': 'Keep listening <span class="section__sub">recently played</span>',
+  歌单加载失败: 'Could not load playlists', 推荐新歌: 'New releases', 根据你的收听历史生成: 'Made from your listening history',
+  网易云近期上新: 'Fresh on NetEase', 换一批: 'Shuffle', 登录网易云解锁属于你的每日推荐: 'Sign in to unlock your daily mix',
+  '登录网易云，解锁属于你的每日推荐': 'Sign in to NetEase to unlock your daily mix',
+  按风格浏览热门歌单: 'Browse popular playlists by genre', '按风格浏览热门歌单。': 'Browse popular playlists by genre.',
+  '实时搜索网易云曲库：输入即搜，回车立即执行。': 'Live search over the NetEase library: type to search, Enter to run.',
+  '想听点什么？歌曲 / 歌单 / 艺人': 'What shall we play? Songs / playlists / artists',
+  歌曲: 'Songs', 歌单: 'Playlists', 搜索失败: 'Search failed',
+  '换一个关键词，或者试试下方热门搜索。': 'Try another keyword, or one of the popular searches below.',
+  '换一个关键词，或切到歌曲搜索。': 'Try another keyword, or switch to song search.',
+  搜歌曲: 'Search songs',
+  // Local music
+  '导入的曲目登记在本机清单里，重启后依然在。': 'Imported tracks are registered on this device and survive a restart.',
+  '导入本地音频，用同一套播放器与声场播放。': 'Import local audio and play it with the same player and soundstage.',
+  把音频文件拖到这里: 'Drop audio files here',
+  '·  支持 mp3 / flac / wav / ogg / m4a / aac': '·  mp3 / flac / wav / ogg / m4a / aac supported',
+  '把 mp3 / flac 等文件拖进上方区域，或通过按钮导入。导入后即可用均衡器与频谱播放。':
+    'Drag mp3 / flac files into the area above, or import with the button. Then play them with the EQ and spectrum.',
+  打开文件对话框失败: 'Could not open the file dialog', 打开目录对话框失败: 'Could not open the folder dialog',
+  '正在扫描目录，请稍候…': 'Scanning folder, please wait…', 扫描失败: 'Scan failed', 目录不可读: 'Folder unreadable',
+  导入失败: 'Import failed', 无法读取所选文件: 'Cannot read the selected file', 没有可导入的音频文件: 'No audio files to import',
+  这些曲目已经在曲库里了: 'These tracks are already in the library', 本地文件: 'Local file',
+  '浏览器环境无法扫描目录，请改用文件选择': 'The browser cannot scan folders — use the file picker instead',
+  // Library / queue / playlists
+  历史: 'History', 队列: 'Queue', 我的歌单: 'My playlists', 订阅歌单: 'Subscribed',
+  '收藏、播放历史、当前队列与本地歌单。': 'Favorites, history, current queue and local playlists.',
+  播放队列是空的: 'The queue is empty',
+  '在曲目行悬停点击＋，或播放任意歌单来填充队列。': 'Hover a track and hit ＋, or play any playlist to fill the queue.',
+  队列已清空: 'Queue cleared',
+  '在播放条或任意曲目行点击 ♥，喜欢的歌会出现在这里。': 'Tap ♥ on the player bar or any track row — favourites land here.',
+  '播放过的歌曲会自动记录在这里。': 'Songs you play are recorded here automatically.',
+  已移除: 'Removed', 打开: 'Open', 重命名: 'Rename', 删除歌单: 'Delete playlist', 新建歌单: 'New playlist',
+  歌单名称: 'Playlist name', '例如：深夜写代码': 'e.g. Late-night coding', 创建: 'Create',
+  歌单名称不能为空: 'Playlist name cannot be empty', 重命名歌单: 'Rename playlist', 保存: 'Save', 已重命名: 'Renamed',
+  已删除歌单: 'Playlist deleted', "新建歌单…": 'New playlist…', 这首歌已经在歌单里了: 'Already in this playlist',
+  还没有本地歌单: 'No local playlists yet',
+  '在任何曲目上右键 → 加入歌单，就能把散落的歌收进一个袋子里；歌单只保存在本机，重启也在。':
+    'Right-click any track → Add to playlist to gather loose songs in one bag. Playlists live on this device and survive a restart.',
+  新建第一个歌单: 'Create your first playlist', 歌单不存在或已删除: 'Playlist missing or deleted', 回到我的: 'Back to Library',
+  这些本地曲目已不在曲库: 'These local tracks are no longer in the library', 这个歌单还是空的: 'This playlist is still empty',
+  '本地文件被移动或删除后无法播放，可在「本地音乐」重新导入。':
+    'Local files that were moved or deleted cannot play — re-import them under Local Music.',
+  '在任意曲目行右键 → 加入歌单，把歌收进来。': 'Right-click any track row → Add to playlist.',
+  去本地音乐: 'Go to Local Music', 已从歌单移除: 'Removed from playlist', 移出歌单: 'Remove from playlist',
+  下一首播放: 'Play next', 加入歌单: 'Add to playlist', '加入歌单…': 'Add to playlist…',
+  本机: 'This device', 自建: 'Yours', 云端: 'Cloud', 同步到网易云: 'Sync to NetEase',
+  已收藏歌单: 'Playlist subscribed', 已取消收藏歌单: 'Playlist unsubscribed', 网易云端同步失败: 'NetEase sync failed',
+  接口不可用: 'API unavailable', 同步失败: 'Sync failed', 请先登录网易云账号: 'Sign in to NetEase first',
+  '账号信息缺少 UID，请在账号菜单里退出后重新扫码': 'Account info has no UID — sign out from the account menu and scan again',
+  '正在拉取云端歌单…': 'Fetching cloud playlists…', 云端还没有歌单: 'No cloud playlists yet', 拉取失败: 'Fetch failed',
+  同时取消云端: 'Also unsubscribe', 只删本机: 'Keep on cloud', 云端取消失败: 'Cloud unsubscribe failed',
+  已从本机与网易云取消收藏: 'Unsubscribed on this device and on NetEase', 已从本机取消收藏: 'Removed on this device',
+  导入歌单: 'Import playlist', '网易云歌单链接或 ID': 'NetEase playlist link or ID',
+  '没有识别到歌单 ID': 'No playlist ID found', '正在读取歌单…': 'Reading playlist…',
+  歌单不存在或无权访问: 'Playlist missing or not accessible', 歌单不存在: 'Playlist not found',
+  '全部只存在本机，点「拉取云端」合并账号里的歌单': 'All stored on this device only — hit “Fetch cloud playlists” to merge your account’s lists',
+  '登录后可与网易云收藏互相同步': 'Sign in to sync favourites with NetEase', 拉取云端歌单: 'Fetch cloud playlists',
+  导入歌单链接: 'Import by link', 还没有收藏在线歌单: 'No subscribed playlists yet',
+  '点「拉取云端歌单」把你网易云账号里的歌单一次搬进来；也可以粘贴链接或去音乐馆收藏。':
+    'Hit “Fetch cloud playlists” to pull everything from your NetEase account, paste a link, or subscribe in Music Hall.',
+  '在歌单详情页点「收藏歌单」，或粘贴网易云歌单链接导入。登录后可以与网易云互相同步。':
+    'Tap “Subscribe” on a playlist page, or paste a NetEase link. Once signed in, subscriptions sync both ways.',
+  登录网易云: 'Sign in to NetEase', 去音乐馆: 'Go to Music Hall', 收藏歌单: 'Subscribe', 试试其他歌单: 'Try another playlist.',
+  已在播放队列中: 'Already in the queue', 暂无可播放内容: 'Nothing to play', 随机播放失败: 'Shuffle failed',
+  播放列表已结束: 'End of list', 已淡出并暂停: 'Faded out and paused',
+  // Lyrics / player
+  '专辑 · {album}': 'Album · {album}', 本地音乐暂无歌词: 'No lyrics for local files',
+  '暂无歌词 · 请欣赏旋律': 'No lyrics · enjoy the music', 上下拖拽调整播放进度: 'Drag up or down to seek',
+  '播放歌曲或点击曲目行的＋加入队列。': 'Play a song, or hit ＋ on a track row to queue it.',
+  '随机播放：开': 'Shuffle: on', '随机播放：关': 'Shuffle: off', 播放队列为空: 'Queue is empty',
+  随机播放已开启: 'Shuffle on', 随机播放已关闭: 'Shuffle off',
+  '下载功能已在设置 → 下载设置中关闭': 'Downloads are off — enable them in Settings → Downloads',
+  无法获取该歌曲的下载地址: 'No download URL for this track', '下载失败（HTTP': 'Download failed (HTTP',
+  已连接网易云曲库: 'Connected to the NetEase library',
+  '网易云接口暂不可达，使用内置示例曲库': 'NetEase API unreachable — using the built-in sample library',
+  '孤男音乐 · 桌面声场': 'Lonely Guy Music · Desktop Soundstage', 解锁: 'Unlock', '锁定（鼠标穿透）': 'Lock (click-through)',
+  '音源与官方接口均无可用地址（可能无版权或已下架）': 'No URL from any source or the official API (unlicensed or removed)',
+  播放被浏览器拦截: 'Playback blocked by the browser',
+  '音频地址无效或格式不支持（音源可能已失效）': 'Invalid or unsupported audio URL (the source may be dead)',
+  '网络中断，请稍后重试': 'Network interrupted, try again shortly', 音频解码失败: 'Audio decode failed',
+  被浏览器拦截: 'Blocked by the browser', 'FLAC 无损': 'FLAC lossless', 超大: 'Huge',
+  '歌曲名 - 艺术家': 'Title - Artist', '艺术家 - 歌曲名': 'Artist - Title',
+  空格: 'Space', '播放 / 暂停': 'Play / pause', '快退 / 快进 5 秒': 'Rewind / forward 5s', '音量 ±5%': 'Volume ±5%',
+  关闭浮层: 'Close overlay', 减小字号: 'Smaller text', 增大字号: 'Larger text', 关闭桌面歌词: 'Close desktop lyrics',
+  当前: 'Current', 更改: 'Change', 确定: 'OK', 输入: 'Input', 对话框: 'Dialog', 确认操作: 'Confirm',
+  '换个分类或关键词试试。': 'Try another category or keyword.',
+  // Settings copy
+  '播放、外观、歌词、列表与下载，全部选项即时生效。': 'Playback, appearance, lyrics, lists and downloads — every option applies instantly.',
+  '动画、主题、窗口与字体，随时切换即时生效。': 'Animation, theme, window and type — switch any time, applies instantly.',
+  "关闭后减少界面动效，低性能设备更流畅": 'Reduces motion for smoother performance on slow devices',
+  "全站强调色，影响按钮、频谱、氛围光": 'Site-wide accent colour: buttons, spectrum and ambient light',
+  "切换后整个界面立即转换，可随时切回": 'The whole interface switches at once, and can be reverted any time',
+  '搜索使用网易云元数据，播放时优先调用下方已启用的自定义音源获取真实链接；失败会自动降级到官方接口。':
+    'Search uses NetEase metadata. Playback prefers the enabled custom sources below, falling back to the official API.',
+  启动时自动接着播放上次的歌曲: 'Resume the last track automatically on launch',
+  播放期间系统不会进入睡眠: 'Keep the system awake while playing',
+  再次播放同一首歌时恢复到上次位置: 'Restore the last position when a track plays again',
+  取链或播放失败时自动播放下一首: 'Skip to the next track when linking or playback fails',
+  已播放的歌词逐字高亮: 'Highlight played lyrics word by word',
+  'Windows 任务栏图标显示播放进度': 'Show playback progress on the Windows taskbar icon',
+  点击播放条封面打开的歌词大页: 'The full-screen lyrics page opened from the player bar cover',
+  '当前歌词行放大，其余行淡出': 'Enlarge the current line, fade the rest',
+  '歌词稍晚跟随播放进度，适合跟唱': 'Lyrics follow the playhead slightly later — good for singing along',
+  '上下拖拽歌词行快进/快退': 'Drag lyric lines up or down to seek',
+  '在桌面上显示一层置顶歌词，可锁定位置。': 'A pinned lyrics layer on your desktop, position lockable.',
+  在屏幕底部显示置顶歌词窗口: 'Show a always-on-top lyrics window at the bottom of the screen',
+  '未播放 / 已播放 / 阴影颜色': 'Unplayed / played / shadow colour',
+  '锁定后鼠标事件穿透，不会挡住桌面操作': 'When locked, clicks pass through to the desktop',
+  在曲目名后标注来源平台: 'Tag each track with its source platform',
+  返回列表时恢复上次浏览位置: 'Restore your scroll position when returning to a list',
+  双击直接用当前列表替换播放队列: 'Double-click replaces the queue with the current list',
+  '把在线歌曲保存到本地，文件名按下方规则生成。': 'Save online tracks locally; file names follow the rule below.',
+  在曲目行与歌词页显示下载按钮: 'Show the download button on track rows and the lyrics page',
+  留空则每次下载时询问保存位置: 'Leave empty to be asked where to save each time',
+  "未设置（每次询问）": 'Not set (ask each time)', 已恢复每次询问: 'Asked each time again', 恢复询问: 'Ask each time',
+  '音源的网络请求默认直连，不读取系统代理。仅当你的网络必须通过代理才能访问音源接口时，才需要填写；保存后立即生效，无需重启。':
+    'Source requests go direct by default and ignore the system proxy. Fill this only if your network needs a proxy to reach them; applies on save, no restart.',
+  '兼容 LX Music 自定义音源脚本。导入后启用，播放时会优先用音源取链；全部失败才降级官方接口。':
+    'Compatible with LX Music source scripts. Once enabled, sources resolve URLs first; the official API is the fallback.', '导入本地 .js': 'Import local .js',
+  '正在读取音源…': 'Reading source…', '支持系统媒体键与托盘控制。以下快捷键在非输入状态下生效。':
+    'System media keys and tray controls supported. The shortcuts below apply when you are not typing.',
+  '在线曲库（网易云）': 'Online library (NetEase)', 离线示例曲库: 'Offline sample library',
+  '在线曲库依赖第三方接口，仅供学习研究；本地音乐与自定义音源均在本机处理。':
+    'The online library relies on a third-party API, for study only. Local files and custom sources stay on this device.',
+  音源列表加载失败: 'Could not load sources', 暂无自定义音源: 'No custom sources',
+  '导入本地 .js 或从 URL 安装音源脚本。未安装时仍可使用官方接口或离线示例。':
+    'Import a local .js or install from URL. Without one, the official API or offline samples still work.',
+  初始化失败: 'Init failed', 设置音质失败: 'Could not set quality', 当前环境不支持选择目录: 'This environment cannot pick folders',
+  下载路径已设置: 'Download path set', 选择目录失败: 'Could not choose folder',
+  当前状态未使用代理音源请求直连: 'Current: no proxy, source requests go direct',
+  '当前状态：未使用代理，音源请求直连': 'Current: no proxy, source requests go direct',
+  "已关闭代理（恢复直连）": 'Proxy off (direct again)', 保存失败: 'Save failed', 音源脚本: 'Source script',
+  '正在导入音源…': 'Importing source…', 请输入音源脚本: 'Enter a source script URL',
+  '请输入音源脚本 URL': 'Enter a source script URL', '正在下载…': 'Downloading…', 安装失败: 'Install failed',
+  音源已启用: 'Source enabled', 音源已停用: 'Source disabled', 切换失败: 'Toggle failed', '确定删除这个音源？': 'Delete this source?', 删除失败: 'Delete failed',
+  双击替换播放队列: 'Double-click replaces queue', 启用下载: 'Enable downloads',
+  // Punctuation-qualified toast variants (tr matches whole trimmed strings, so they need their own keys)
+  '退出失败：': 'Sign-out failed: ', '正在生成二维码…': 'Generating QR code…', '已登录：': 'Signed in: ',
+  '等待扫码…': 'Waiting for scan…', 未命名歌单: 'Untitled playlist', 未知艺人: 'Unknown artist',
+  未知曲目: 'Unknown track', 当前是网易云游客账号: 'This is a NetEase guest account',
+  '收藏、订阅、播放记录都能正常用，但网易云没有给这个账号昵称和头像，个性化推荐也基本是空的。':
+    'Favourites, subscriptions and history all work, but NetEase gave this account no nickname or avatar, so the recommendations stay generic.',
+  '请在手机网易云 App 里确认已登录主账号，再回来重新扫码。':
+    'Confirm your main account is signed in on the NetEase app on your phone, then scan again.',
+  '打开文件对话框失败：': 'File dialog failed: ', '打开目录对话框失败：': 'Folder dialog failed: ',
+  '扫描失败：': 'Scan failed: ', '导入失败：': 'Import failed: ', '网易云端同步失败：': 'NetEase sync failed: ',
+  '同步失败：': 'Sync failed: ', '拉取失败：': 'Fetch failed: ', '云端取消失败：': 'Cloud unsubscribe failed: ',
+  '随机播放失败：': 'Shuffle failed: ', '下载失败：': 'Download failed: ', '设置音质失败：': 'Could not set quality: ',
+  '选择目录失败：': 'Could not choose folder: ', '保存失败：': 'Save failed: ', '安装失败：': 'Install failed: ',
+  '切换失败：': 'Toggle failed: ', '删除失败：': 'Delete failed: ',
+  '点击播放条封面打开的歌词大页。': 'The full lyrics page opened from the player-bar cover.',
+  '从 URL 安装': 'Install from URL', '试试其他歌单。': 'Try another playlist.', 本地: 'Local', 网易云: 'NetEase',
+  网易: 'NetEase',
+  歌词翻译: 'Lyric Translation', 只看原文: 'Original only', 只看译文: 'Translation only',
+  双语对照: 'Bilingual', 歌词显示: 'Lyric display', 翻译这首歌: 'Translate this song',
+  '正在翻译…': 'Translating…', 译文已就绪: 'Translation ready',
+  '翻译失败，点此重试': 'Translation failed — click to retry',
+  '未配置翻译服务或翻译失败': 'No translation service configured, or the request failed',
+  翻译失败: 'Translation failed',
+  '译文按界面语言生成：简体/繁体界面译成中文，英文界面译成英文':
+    'Translations follow the interface language: Chinese for Simplified/Traditional UI, English for the English UI',
+  '优先使用网易云自带的官方译文；没有译文时，点歌词页的「翻译这首歌」才会调用你配置的模型，不会自动发起外部请求。':
+    'Official NetEase translations are used first. Only when a song has none will “Translate this song” call your own model — no external request happens on its own.',
+  翻译服务地址: 'Translation service URL', 翻译服务密钥: 'Translation API key', 翻译模型: 'Translation model',
+  '模型名，如 gpt-4o-mini': 'Model name, e.g. gpt-4o-mini', 保存翻译服务: 'Save translation service',
+  '当前状态：未配置翻译服务，只有网易云自带译文的歌曲能显示译文':
+    'Status: no translation service configured — only songs with a built-in NetEase translation can show one',
+  '已保存（留空则不修改）': 'Saved (leave blank to keep)',
+  请填写服务地址与模型名: 'Please fill in the service URL and model name',
+  '请填写 API Key': 'Please enter an API key',
+  翻译服务已保存: 'Translation service saved',
+  'http://127.0.0.1:7890（留空 = 不使用代理）': 'http://127.0.0.1:7890 (blank = no proxy)',
+  网络代理地址: 'Proxy address',
+  '输入音源脚本 URL（如 https://…/xxx.js）': 'Enter a source script URL (e.g. https://…/xxx.js)',
+  '音源脚本 URL': 'Source script URL', 'URL 需以 http(s):// 开头': 'URL must start with http(s)://',
+  清除全部最近搜索: 'Clear all recent searches', 删除这条记录: 'Delete this entry',
+  大家都在搜: 'Trending searches'};
 
 const DICTS = { 'zh-TW': ZH_TW, en: EN };
 
 /* ---------- 动态句子模板（含占位符） ---------- */
 // 每条：{ re: 简体正则, make: (match, dict) => 译文 }
 const PATTERNS = [
+  {
+    re: /^孤男音乐 · 桌面声场 (v\S+) · 当前模式：(.+)。$/,
+    make: (m) => {
+      const online = m[2].startsWith('在线曲库');
+      return {
+        'zh-TW': `孤男音樂 · 桌面聲場 ${m[1]} · 目前模式：${online ? '線上曲庫（網易雲）' : '離線示例曲庫'}。`,
+        en: `Lonely Guy Music · Desktop Soundstage ${m[1]} · Mode: ${online ? 'NetEase online library' : 'offline sample library'}`,
+      }[lang] || m[0];
+    },
+  },
+  {
+    re: /^当前状态：已配置 (.+?)（密钥只保存在本机用户目录，不会下发到界面）$/,
+    make: (m) => ({
+      'zh-TW': `目前狀態：已設定 ${m[1]}（金鑰只存放在本機使用者目錄，不會下發到介面）`,
+      en: `Status: ${m[1]} configured (the key stays in your local user folder and is never sent to the interface)`,
+    }[lang] || m[0]),
+  },
   {
     re: /^找到 <b>(\d+)<\/b> 首与「(.+)」相关的歌曲$/,
     make: (m, d) => ({ 'zh-TW': `找到 <b>${m[1]}</b> 首與「${m[2]}」相關的歌曲`, en: `Found <b>${m[1]}</b> songs for “${m[2]}”` }[lang] || m[0]),
@@ -360,6 +788,26 @@ function translateTextNode(node) {
 }
 
 const ATTRS = ['title', 'aria-label', 'placeholder', 'alt'];
+// 属性没有像文本节点那样的"原文"留在 DOM 里，切回简体时必须靠这里记录的原文还原
+const attrState = new WeakMap();
+
+function translateAttr(elm, attr, dict) {
+  const cur = elm.getAttribute?.(attr);
+  if (cur == null || !cur.trim()) return;
+  let s = attrState.get(elm);
+  if (!s) { s = {}; attrState.set(elm, s); }
+  const rec = s[attr];
+  if (lang === 'zh-CN') {
+    if (rec && cur === rec.out) elm.setAttribute(attr, rec.orig);
+    return;
+  }
+  // cur 既不是原文也不是我们写进去的译文 → 业务代码改过这个属性，以新值为准
+  const orig = !rec || (cur !== rec.out && cur !== rec.orig) ? cur : rec.orig;
+  const trimmed = orig.trim();
+  const out = dict[trimmed] ? orig.replace(trimmed, dict[trimmed]) : orig;
+  s[attr] = { orig, out };
+  if (out !== cur) elm.setAttribute(attr, out);
+}
 
 export function applyLang(next) {
   lang = next || 'zh-CN';
@@ -369,15 +817,9 @@ export function applyLang(next) {
   while (walker.nextNode()) nodes.push(walker.currentNode);
   nodes.forEach(translateTextNode);
   // 属性
+  const dict = DICTS[lang] || {};
   document.querySelectorAll('*').forEach((elm) => {
-    ATTRS.forEach((attr) => {
-      const v = elm.getAttribute?.(attr);
-      if (!v || !v.trim()) return;
-      if (lang === 'zh-CN') return; // 属性原文保留在 HTML/JS 中，无需还原
-      const dict = DICTS[lang];
-      const trimmed = v.trim();
-      if (dict && dict[trimmed]) elm.setAttribute(attr, v.replace(trimmed, dict[trimmed]));
-    });
+    ATTRS.forEach((attr) => translateAttr(elm, attr, dict));
   });
   // 模板节点
   document.querySelectorAll('[data-i18n-tpl]').forEach(renderTpl);

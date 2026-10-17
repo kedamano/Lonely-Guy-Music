@@ -4,10 +4,18 @@
  * 渲染层通过 window.gm 调用窗口控制、外链打开、接收托盘/媒体键指令，
  * 以及电源阻止、任务栏进度、下载保存、桌面歌词窗口等系统能力。
  */
-const { contextBridge, ipcRenderer, webUtils } = require('electron');
+const { contextBridge, ipcRenderer, webUtils, app } = require('electron');
+
+// 开发模式：未打包（npm start）或显式 GUMAN_DEBUG=1。生产打包后为 false，
+// 渲染层据此隐藏 window.__guman 调试钩子。
+const devMode = !app.isPackaged || process.env.GUMAN_DEBUG === '1';
 
 contextBridge.exposeInMainWorld('gm', {
   platform: process.platform,
+  // 版本信息（package.json 单一来源）+ 运行模式
+  appVersion: app.getVersion(),
+  electronVersion: process.versions.electron,
+  devMode,
   minimize: () => ipcRenderer.send('window:minimize'),
   maximize: () => ipcRenderer.send('window:maximize'),
   close: () => ipcRenderer.send('window:close'),
@@ -43,6 +51,10 @@ contextBridge.exposeInMainWorld('gm', {
   lyricSeek: (time) => ipcRenderer.send('lyric:seek', time),
   lyricCloseRequest: () => ipcRenderer.send('lyric:closeRequest'),
   lyricActivate: () => ipcRenderer.send('lyric:activate'),
+  // 首启用户协议：true=同意
+  agree: (ok) => ipcRenderer.invoke('agreement:decide', ok),
+  // 打开日志目录（设置页 → 关于）
+  openLogDir: () => ipcRenderer.invoke('shell:openLogDir'),
   // 歌词窗口接收主进程转发的当前歌词行
   onLyricLine: (cb) => {
     ipcRenderer.on('lyric:line', (_e, payload) => cb(payload));

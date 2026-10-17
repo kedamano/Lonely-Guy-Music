@@ -41,9 +41,19 @@ function loadConfig() {
   try {
     if (fs.existsSync(INDEX_PATH)) {
       config = JSON.parse(fs.readFileSync(INDEX_PATH, 'utf8'));
+      if (!config || typeof config !== 'object' || Array.isArray(config)) throw new Error('配置不是合法对象');
     }
   } catch (e) {
-    console.error('[source-manager] loadConfig failed:', e.message);
+    // 配置损坏（手动改坏 / 写入中断）：备份坏文件后用默认配置重建，绝不让它挡住启动
+    let backup = '';
+    try {
+      backup = INDEX_PATH.replace(/\.json$/, '') + `.corrupt-${Date.now()}.json`;
+      fs.renameSync(INDEX_PATH, backup);
+      console.error(`[source-manager] 配置文件损坏，已备份为 ${path.basename(backup)}，本次使用默认配置（${e.message}）`);
+    } catch (_) {
+      console.error(`[source-manager] 配置文件损坏且无法备份，使用默认配置（${e.message}）`);
+    }
+    config = { sources: [], quality: 'flac' };
   }
   if (!config.sources) config.sources = [];
   if (!config.quality) config.quality = 'flac';

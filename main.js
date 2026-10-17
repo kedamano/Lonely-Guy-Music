@@ -1,15 +1,17 @@
 'use strict';
 /**
  * 孤男音乐 · Electron 主进程
- *  - 启动同进程后端（server/index.js）：托管 UI + /api（在线网易云 / 离线示例）
+ *  - 启动同进程后端（server/index.js）：托管 UI + /api（在线网易云 / 离线示例），端口动态分配
  *  - 无边框窗口 + 自定义标题栏（min/max/close/mini 经 IPC）
  *  - 系统托盘驻留、媒体键（Windows app-command + 全局快捷键）、托盘播放控制
  *  - 电源阻止（播放防休眠）、任务栏进度条、窗口尺寸预设、下载落盘、桌面歌词窗口
+ *  - 首启用户协议确认、主进程日志落盘（userData/logs）、自动更新（打包后）
  */
-const { app, BrowserWindow, Tray, Menu, nativeImage, globalShortcut, ipcMain, shell, screen, powerSaveBlocker } = require('electron');
+const { app, BrowserWindow, Tray, Menu, nativeImage, globalShortcut, ipcMain, dialog, shell, screen, powerSaveBlocker } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const iconMod = require('./assets/icon');
+const mainLog = require('./main-log');
 
 let mainWindow = null;
 let tray = null;
@@ -18,6 +20,7 @@ let miniMode = false;
 let normalBounds = null;
 let lyricWindow = null;      // 桌面歌词窗口
 let powerBlockerId = null;   // 电源阻止句柄
+let hostServer = null;       // 同进程后端（server/index.js），getPort() 取实际端口
 
 // 窗口尺寸预设（与设置页 → 基本设置 → 窗口尺寸 对应）
 const WINDOW_SIZES = {
@@ -43,18 +46,33 @@ if (!gotLock) {
   if (!('ENABLE_NCM' in process.env)) process.env.ENABLE_NCM = '1';
   // 把 Electron userData 目录传给后端，用于持久化音源脚本与配置
   process.env.GUMAN_USER_DATA = app.getPath('userData');
-  require('./server'); // 启动后端（同进程 express，监听 3000）
+
+  // 日志落盘：打包后开发者工具不可见，用户侧故障诊断全靠 userData/logs/guman.log
+  mainLog.init(path.join(app.getPath('userData'), 'logs'));
+  const nativeConsole = {
+    log: console.log.bind(console),
+    warn: console.warn.bind(console),
+    error: console.error.bind(console),
+    info: (console.info || console.log).bind(console),
+  };
+  console.log = (...a) => { nativeConsole.log(...a); mainLog.log(...a); };
+  console.warn = (...a) => { nativeConsole.warn(...a); mainLog.warn(...a); };
+  console.error = (...a) => { nativeConsole.error(...a); mainLog.error(...a); };
+  console.info = (...a) => { nativeConsole.info(...a); mainLog.log(...a); };
+  // 全局兜底：未捕获异常/未处理拒绝只记录不崩溃（播放不能因一处缺陷整体退出）
+  process.on('uncaughtException', (e) => mainLog.error('uncaughtException:', e));
+  process.on('unhandledRejection', (reason) => mainLog.error('unhandledRejection:', reason));
+
+  // 启动后端（同进程 express，端口动态分配）；实际端口经 hostServer.getPort() 获取
+  hostServer = require('./server');
 }
 
-function waitForServer(retries = 40) {
-  return new Promise((resolve) => {
-    const tryOnce = (n) => {
-      fetch('http://localhost:3000/api/__mode', { signal: AbortSignal.timeout(800) })
-        .then(() => resolve(true))
-        .catch(() => (n > 0 ? setTimeout(() => tryOnce(n - 1), 250) : resolve(false)));
-    };
-    tryOnce(retries);
-  });
+// 等待后端监听完成（动态端口已确定）；超时/失败返回 false
+function waitForServer(timeoutMs = 20000) {
+  return Promise.race([
+    hostServer.ready,
+    new Promise((_, reject) => setTimeout(() => reject(new Error('后端启动超时')), timeoutMs)),
+  ]).then(() => true).catch((e) => { console.error('[boot] 后端启动失败:', e); return false; });
 }
 
 function createTray(icon) {
@@ -97,12 +115,18 @@ function createWindow() {
     },
   });
 
-  mainWindow.loadURL('http://localhost:3000/');
+  mainWindow.loadURL(`http://127.0.0.1:${hostServer.getPort()}/`);
   mainWindow.once('ready-to-show', () => mainWindow.show());
 
   // 最大化状态同步给渲染层（用于切换最大化/还原图标）
   mainWindow.on('maximize', () => mainWindow?.webContents.send('window:max-state', true));
   mainWindow.on('unmaximize', () => mainWindow?.webContents.send('window:max-state', false));
+
+  // 渲染进程崩溃/无响应：落盘诊断（打包后唯一可见的线索）
+  mainWindow.webContents.on('render-process-gone', (_e, details) => {
+    mainLog.error('render-process-gone:', JSON.stringify(details));
+  });
+  mainWindow.on('unresponsive', () => mainLog.warn('主窗口无响应'));
 
   // 页面内 target=_blank / window.open 一律交给系统浏览器
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -258,6 +282,96 @@ ipcMain.handle('download:save', async (_e, { name, dir, data }) => {
   }
 });
 
+/* ---------- 首启用户协议 ---------- */
+// 首次启动展示使用声明与免责条款，同意后写标记文件；直接关窗视为不同意并退出。
+const AGREEMENT_FILE = path.join(app.getPath('userData'), '.agreed');
+let agreementWindow = null;
+let agreementResolver = null;
+
+function ensureAgreement() {
+  return new Promise((resolve) => {
+    try { if (fs.existsSync(AGREEMENT_FILE)) return resolve(true); } catch (_) { /* ignore */ }
+    agreementResolver = resolve;
+    agreementWindow = new BrowserWindow({
+      width: 620,
+      height: 660,
+      resizable: false,
+      minimizable: false,
+      maximizable: false,
+      title: '使用声明',
+      icon: nativeImage.createFromBuffer(iconMod.getIconBuffers().ico),
+      backgroundColor: '#0e0d0b',
+      webPreferences: {
+        preload: path.join(__dirname, 'preload.js'),
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: false,
+      },
+    });
+    agreementWindow.setMenuBarVisible(false);
+    agreementWindow.loadFile(path.join(__dirname, 'renderer/agreement.html'));
+    agreementWindow.on('closed', () => {
+      const r = agreementResolver;
+      agreementResolver = null;
+      agreementWindow = null;
+      if (r) r(false);
+    });
+  });
+}
+
+ipcMain.handle('agreement:decide', async (_e, ok) => {
+  if (ok) {
+    try { fs.writeFileSync(AGREEMENT_FILE, new Date().toISOString()); } catch (e) { mainLog.warn('写入协议标记失败:', e.message); }
+  }
+  const r = agreementResolver;
+  agreementResolver = null;
+  if (agreementWindow && !agreementWindow.isDestroyed()) agreementWindow.close();
+  if (r) r(!!ok);
+  return true;
+});
+
+// 打开日志目录（设置页 → 关于）
+ipcMain.handle('shell:openLogDir', async () => {
+  try {
+    await shell.openPath(mainLog.logsDir());
+    return true;
+  } catch (_) {
+    return false;
+  }
+});
+
+/* ---------- 自动更新（仅打包后；未配置发布地址时检查失败静默跳过） ---------- */
+function setupAutoUpdate() {
+  if (!app.isPackaged) return;
+  try {
+    const { autoUpdater } = require('electron-updater');
+    autoUpdater.logger = {
+      info: (...a) => mainLog.log('[updater]', ...a),
+      warn: (...a) => mainLog.warn('[updater]', ...a),
+      error: (...a) => mainLog.error('[updater]', ...a),
+    };
+    autoUpdater.autoDownload = true;
+    autoUpdater.autoInstallOnAppQuit = true;
+    autoUpdater.on('error', (e) => mainLog.warn('[updater] 检查更新失败（忽略）:', e.message));
+    autoUpdater.on('update-downloaded', (info) => {
+      dialog.showMessageBox(mainWindow, {
+        type: 'info',
+        title: '发现新版本',
+        message: `孤男音乐 v${info.version} 已下载完成`,
+        detail: '重启应用后生效。',
+        buttons: ['稍后重启', '立即重启'],
+        defaultId: 1,
+        cancelId: 0,
+      }).then(({ response }) => {
+        if (response === 1) autoUpdater.quitAndInstall(false, true);
+      }).catch(() => {});
+    });
+    autoUpdater.checkForUpdatesAndNotify().catch((e) => mainLog.warn('[updater]', e.message));
+  } catch (e) {
+    mainLog.warn('[updater] 初始化失败（忽略）:', e.message);
+  }
+}
+
 /* ---------- 桌面歌词窗口 ---------- */
 function createLyricWindow() {
   if (lyricWindow && !lyricWindow.isDestroyed()) return lyricWindow;
@@ -281,7 +395,7 @@ function createLyricWindow() {
       sandbox: false,
     },
   });
-  lyricWindow.loadURL('http://localhost:3000/lyric-window.html');
+  lyricWindow.loadURL(`http://127.0.0.1:${hostServer.getPort()}/lyric-window.html`);
   lyricWindow.on('closed', () => { lyricWindow = null; });
   return lyricWindow;
 }
@@ -346,8 +460,19 @@ function registerShortcuts() {
 
 if (gotLock) {
   app.whenReady().then(async () => {
-    await waitForServer();
-    createWindow();
+    if (!(await waitForServer())) {
+      dialog.showErrorBox('孤男音乐启动失败', '本地服务未能启动，请到日志目录查看详情后重试。');
+      app.quit();
+      return;
+    }
+    // 首启用户协议：未同意前不创建主窗口
+    if (await ensureAgreement()) {
+      createWindow();
+      setupAutoUpdate();
+    } else {
+      app.quit();
+      return;
+    }
     registerShortcuts();
 
     app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });

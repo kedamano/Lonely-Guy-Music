@@ -11,7 +11,7 @@ import {
   openMenu, openModal, closeModal, promptText, confirmModal,
 } from './ui.js';
 import { SettingsView } from './settings.js';
-import { applyLang, currentLang, tpl } from './i18n.js';
+import { applyLang, currentLang, tpl, tr } from './i18n.js';
 import { accountState, refreshAccount, paintAccount, openAccountMenu, openLoginModal } from './account.js';
 import { library } from './library.js';
 
@@ -609,19 +609,50 @@ function renderSearchOutput() {
 function buildSearchGuide() {
   const wrap = el('div', { class: 'search-guide reveal in' });
   const history = store.getSearchHistory();
+
+  /* ---------- 最近搜索：标题行 + 可单删的 chips ---------- */
   if (history.length) {
-    wrap.appendChild(el('div', { class: 'search-guide__title' }, [
-      '最近搜索',
-      el('button', { class: 'linkbtn', style: 'margin-left:10px', text: '清除', onclick: () => { store.clearSearchHistory(); renderSearchOutput(); } }),
+    wrap.appendChild(el('div', { class: 'guide-head' }, [
+      el('div', { class: 'guide-head__main' }, [icon('clock'), el('span', { text: '最近搜索' })]),
+      el('button', {
+        class: 'guide-head__clear', title: '清除全部最近搜索',
+        onclick: () => { store.clearSearchHistory(); renderSearchOutput(); },
+      }, [icon('close'), '清除']),
     ]));
     const row = el('div', { class: 'chiprow' });
-    history.forEach((h) => row.appendChild(el('button', { class: 'schip', onclick: () => applySearch(h) }, [icon('clock'), h])));
+    history.forEach((h) => {
+      const chip = el('button', { class: 'schip', onclick: () => applySearch(h) }, [
+        icon('clock'),
+        el('span', { class: 'schip__text', text: h }),
+      ]);
+      // 单条删除：悬停显示 ×，点击不触发搜索
+      const del = el('span', {
+        class: 'schip__del', title: '删除这条记录', role: 'button', tabindex: '-1',
+        onclick: (e) => { e.stopPropagation(); store.removeSearchHistory(h); renderSearchOutput(); },
+      }, [icon('close')]);
+      chip.appendChild(del);
+      row.appendChild(chip);
+    });
     wrap.appendChild(row);
   }
-  wrap.appendChild(el('div', { class: 'search-guide__title', text: '热门搜索' }));
-  const hot = el('div', { class: 'chiprow' });
-  HOT_SEARCHES.forEach((h) => hot.appendChild(el('button', { class: 'schip', onclick: () => applySearch(h) }, [icon('search'), h])));
-  wrap.appendChild(hot);
+
+  /* ---------- 热门搜索：标题行 + 排名网格 ---------- */
+  wrap.appendChild(el('div', { class: 'guide-head' }, [
+    el('div', { class: 'guide-head__main' }, [icon('flame'), el('span', { text: '热门搜索' })]),
+    el('span', { class: 'guide-head__hint', text: '大家都在搜' }),
+  ]));
+  const grid = el('div', { class: 'hotgrid' });
+  HOT_SEARCHES.forEach((h, i) => {
+    grid.appendChild(el('button', {
+      class: 'hotgrid__item' + (i < 3 ? ' is-top' : ''),
+      onclick: () => applySearch(h),
+    }, [
+      el('span', { class: 'hotgrid__rank', text: String(i + 1) }),
+      el('span', { class: 'hotgrid__name', text: h }),
+      icon('chevron-right', 'hotgrid__go'),
+    ]));
+  });
+  wrap.appendChild(grid);
   return wrap;
 }
 
@@ -1324,6 +1355,7 @@ async function renderSettings() {
   if (!settingsView) settingsView = new SettingsView(view, toast);
   await settingsView.init();
   revealIn();
+  applyLang(currentLang()); // 重建出来的节点是中文原文，要按当前语言再套一次
 }
 
 /* ---------------- 列表分页（客户端切片） ---------------- */
@@ -1696,6 +1728,17 @@ function playableList(list) {
 }
 
 /* ---------------- 歌词 ---------------- */
+// 歌词显示语言：off 只看原文 / trans 只看译文 / both 双语对照
+function lyricLangMode() {
+  const v = store.get('lyricLang');
+  return v === 'trans' || v === 'both' ? v : 'off';
+}
+// 译文目标语言跟随界面语言
+function lyricTransTarget() {
+  const l = currentLang();
+  return l === 'en' ? 'en' : l === 'zh-TW' ? 'zh-TW' : 'zh';
+}
+
 function renderLyrics(lines) {
   const box = $('npLyrics');
   if (!box) return;
@@ -1706,28 +1749,55 @@ function renderLyrics(lines) {
     box.appendChild(el('div', { class: 'lyric-empty' }, [icon('lyric'), player.current?.source === 'local' ? '本地音乐暂无歌词' : '暂无歌词 · 请欣赏旋律']));
     return;
   }
-  const karaoke = !!store.get('karaokeLyric');
+  const mode = lyricLangMode();
+  const hasTrans = lines.some((l) => l.trans);
+  // 译文没有字符级时间轴，逐字高亮只对原文成立
+  const karaoke = !!store.get('karaokeLyric') && mode !== 'trans';
   const dragSeek = !!store.get('lyricDragSeek');
   lines.forEach((l) => {
     const d = el('div', {
       class: 'lyric-line' + (karaoke ? ' is-karaoke' : '') + (dragSeek ? ' is-grabbable' : ''),
       title: dragSeek ? '上下拖拽调整播放进度' : '点击跳转',
     });
+    const main = mode === 'trans' && l.trans ? l.trans : l.text;
     // 卡拉OK模式：按字符拆 span，已播放部分高亮
     if (karaoke) {
-      l.text.split('').forEach((ch) => {
+      main.split('').forEach((ch) => {
         const s = el('span', { class: 'lyric-word', text: ch });
         d.appendChild(s);
       });
     } else {
-      d.textContent = l.text;
+      d.textContent = main;
+    }
+    if (mode === 'both' && l.trans && l.trans !== main) {
+      d.appendChild(el('div', { class: 'lyric-line__trans', text: l.trans }));
     }
     if (dragSeek) bindLyricDrag(d, l.time);
     else d.addEventListener('click', () => { player.seek(l.time + 0.02); });
     lyricEls.push(d);
     box.appendChild(d);
   });
+  if (mode !== 'off' && !hasTrans) box.appendChild(translateAsk());
   updateLyric(player.audio.currentTime || 0);
+}
+
+// 网易云没给译文时，由用户点一下才去请求翻译服务（不自动产生外部调用）
+function translateAsk() {
+  const btn = el('button', { class: 'lyric-trans-ask', text: tr('翻译这首歌') });
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    btn.textContent = tr('正在翻译…');
+    try {
+      const ok = await player.requestTranslation(lyricTransTarget());
+      if (ok) { toast(tr('译文已就绪')); renderLyrics(player.lyricLines); }
+      else { btn.disabled = false; btn.textContent = tr('翻译失败，点此重试'); toast(tr('未配置翻译服务或翻译失败')); }
+    } catch (e) {
+      btn.disabled = false;
+      btn.textContent = tr('翻译失败，点此重试');
+      toast(tr('翻译失败'));
+    }
+  });
+  return btn;
 }
 
 // 拖拽歌词行调整播放进度：上下拖拽 → ±秒（每 40px ≈ 10 秒）
@@ -1777,7 +1847,7 @@ function updateLyric(cur) {
   lastLyricIdx = idx;
   lyricEls.forEach((e, i) => e.classList.toggle('is-active', i === idx));
   // 卡拉OK：已播放字符高亮
-  if (store.get('karaokeLyric')) {
+  if (store.get('karaokeLyric') && idx >= 0) {
     const line = lines[idx];
     const sung = Math.max(0, Math.min(1, (cur - line.time) / Math.max(0.1, (line.duration || 3))));
     const words = lyricEls[idx]?.querySelectorAll('.lyric-word') || [];
@@ -2279,6 +2349,10 @@ function applySetting(key, value) {
     case 'lyricDragSeek':
       if (player.lyricLines.length) renderLyrics(player.lyricLines);
       break;
+    case 'lyricLang':
+      if (player.lyricLines.length) renderLyrics(player.lyricLines);
+      pushDesktopLyric();
+      break;
     case 'showSourceTag':
       document.body.classList.toggle('no-srctag', !value);
       if (currentRoute) router(); // 重渲染当前列表，刷新来源标签
@@ -2311,8 +2385,8 @@ function applySetting(key, value) {
       break;
     case 'lang':
       applyLang(value);
-      // 设置页文案也要跟着切换：重渲染设置页
-      if (currentRoute === 'settings' && settingsView) settingsView.init();
+      // 设置页由 SettingsView 一次性构建，新节点没走 revealIn() 会停在 opacity:0 看起来像整页空白
+      if (currentRoute === 'settings') renderSettings();
       break;
     default:
       break;
@@ -2355,10 +2429,15 @@ function pushDesktopLyric() {
   let sub = '';
   if (player.current) text = player.current.name + ' — ' + (player.current.artist || '');
   if (lines.length) {
+    const mode = lyricLangMode();
     const idx = activeLine(lines, player.audio.currentTime || 0);
-    if (idx >= 0) { text = lines[idx].text || text; }
-    const next = lines[idx + 1];
-    if (next) sub = next.text || '';
+    const cur = idx >= 0 ? lines[idx] : null;
+    if (cur) { text = (mode === 'trans' && cur.trans) ? cur.trans : (cur.text || text); }
+    if (cur && mode === 'both' && cur.trans) sub = cur.trans;
+    else {
+      const next = lines[idx + 1];
+      if (next) sub = next.text || '';
+    }
   }
   window.gm.lyricUpdate({ text, sub });
 }
@@ -2501,4 +2580,6 @@ function restoreScroll() {
 boot();
 
 // 调试/自动化测试钩子（控制台与 Playwright 可用）
-window.__guman = { player, store, api };
+// 调试钩子：仅开发模式（npm start / GUMAN_DEBUG=1）或无 Electron 的浏览器测试环境暴露；
+// 生产打包后 window.gm.devMode === false，player/store/api 句柄不再挂到 window 上。
+if (!window.gm || window.gm.devMode) window.__guman = { player, store, api };
