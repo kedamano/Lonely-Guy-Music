@@ -19,7 +19,12 @@ function init(opts) {
   try {
     if (fs.existsSync(FILE)) {
       const j = JSON.parse(fs.readFileSync(FILE, 'utf8'));
-      state = { cookie: String(j.cookie || ''), user: j.user || null, loginAt: Number(j.loginAt || 0) };
+      // 老版本把 Set-Cookie 原文整个存了下来，读出来先洗一遍，省得用户重新扫码
+      state = {
+        cookie: cleanCookie(j.cookie),
+        user: j.user || null,
+        loginAt: Number(j.loginAt || 0),
+      };
       if (state.cookie) console.log('[account] 已恢复登录态' + (state.user ? `：${state.user.nickname || ''}` : ''));
     }
   } catch (e) {
@@ -65,18 +70,44 @@ function hasCredential(cookie) {
   return /MUSIC_U=[^;]+/.test(String(cookie || ''));
 }
 
+// 上游把 Set-Cookie 原文拼成一个字符串返回，属性段（Path/Domain/Expires/Max-Age…）
+// 混在里面会让注入的 Cookie 头带上非法字段，这里只保留 NAME=VALUE 对（同名取最后一次）。
+const COOKIE_ATTRS = /^(max-age|expires|path|domain|secure|httponly|samesite|version|comment)$/i;
+function cleanCookie(raw) {
+  const out = new Map();
+  for (const seg of String(raw || '').split(';')) {
+    const t = seg.trim();
+    const i = t.indexOf('=');
+    if (i <= 0) continue;
+    const k = t.slice(0, i);
+    if (!/^[\w.-]+$/.test(k) || COOKIE_ATTRS.test(k)) continue;
+    out.set(k, t.slice(i + 1).trim());
+  }
+  return [...out].map(([k, v]) => `${k}=${v}`).join('; ');
+}
+
+/**
+ * 从 /login/status、/user/account 的响应里取用户资料（两者一个套 data 一个不套）。
+ * 昵称与头像只在 profile 里；网易云对匿名/游客态账号把 profile 回成 null，
+ * 此时不能编一个昵称顶上去——界面要靠 anonymous 说明"为什么没有昵称"。
+ */
 function pickUser(raw) {
-  const acc = raw?.account || raw?.data?.account || raw || {};
-  const level = raw?.level ?? acc?.level ?? 0;
+  const d = raw?.data || raw || {};
+  const acc = d.account || {};
+  const pro = d.profile || {};
+  const vipType = Number(pro.vipType ?? acc.vipType ?? 0);
+  const nickname = String(pro.nickname || pro.name || '');
   return {
-    userId: String(acc?.id || acc?.userId || ''),
-    nickname: acc?.nickname || acc?.nickName || '网易云用户',
-    avatarUrl: acc?.avatarUrl || '',
-    signature: acc?.signature || '',
-    vipType: Number(acc?.vipType || 0),
-    level: Number(level || 0),
+    userId: String(pro.userId || acc.id || ''),
+    nickname,
+    avatarUrl: String(pro.avatarUrl || ''),
+    signature: String(pro.signature || ''),
+    vipType,
+    level: Number(d.level ?? pro.level ?? 0),
     // 8/120 为各类 VIP；0 表示普通用户
-    isVip: Number(acc?.vipType || 0) > 0,
+    isVip: vipType > 0,
+    // 匿名账号：有 MUSIC_U 但没有资料页，收藏/推荐能用，昵称头像不存在
+    anonymous: !nickname && (acc.anonimousUser === true || acc.anonymousUser === true),
   };
 }
 
@@ -84,7 +115,7 @@ async function refreshStatus() {
   if (!state.cookie) return null;
   try {
     const j = await ncm('/login/status');
-    const user = pickUser(j?.data || j);
+    const user = pickUser(j);
     if (user.userId) {
       state.user = user;
       save();
@@ -118,7 +149,7 @@ async function qrCheck(key) {
   const j = await ncm('/login/qr/check', { key, timestamp: Date.now() });
   const code = Number(j?.code || 0);
   if (code === 803 && hasCredential(j?.cookie)) {
-    state.cookie = String(j.cookie).trim();
+    state.cookie = cleanCookie(j.cookie);
     state.loginAt = Date.now();
     save();
     const user = await refreshStatus();

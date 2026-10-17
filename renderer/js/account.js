@@ -38,11 +38,17 @@ export function paintAccount() {
   if (!box || !btn || !av || !name || !sub) return;
 
   const u = state.user || {};
+  const anon = !!u.anonymous;
   box.classList.toggle('is-login', state.loggedIn);
-  name.textContent = state.loggedIn ? (u.nickname || '已登录') : '未登录';
+  name.textContent = state.loggedIn ? (u.nickname || (anon ? '匿名账号' : '已登录')) : '未登录';
   if (state.loggedIn) {
-    sub.textContent = u.isVip ? '黑胶会员 · 已同步' : '网易云用户 · 已同步';
-    btn.title = `${u.nickname || ''} · 点击查看账号菜单`;
+    // 网易云对匿名/游客态账号不返回 profile，这里如实说明，别让用户以为登录丢数据了
+    sub.textContent = anon
+      ? '游客态 · 建议在 App 内登录主账号'
+      : (u.isVip ? '黑胶会员 · 已同步' : '网易云用户 · 已同步');
+    btn.title = anon
+      ? '当前是网易云游客账号，收藏与推荐可用，但没有昵称头像'
+      : `${u.nickname || ''} · 点击查看账号菜单`;
   } else {
     sub.textContent = state.online ? '扫码登录网易云' : '曲库离线，暂无法登录';
     btn.title = state.online ? '登录网易云账号' : '网易云接口不可达，无法登录';
@@ -69,19 +75,23 @@ export function openAccountMenu(x, y) {
 }
 
 function showAccountInfo(u) {
+  const anon = !!u.anonymous;
   const rows = [
     ['昵称', u.nickname || '—'],
     ['等级', u.level ? `Lv.${u.level}` : '—'],
     ['会员', u.isVip ? '黑胶会员' : '普通用户'],
     ['UID', u.userId || '—'],
   ];
+  if (anon) rows.splice(1, 0, ['账号类型', '游客态（网易云未返回资料页）']);
   const body = el('div', {}, rows.map(([k, v]) => el('div', { class: 'kv' }, [
     el('span', { class: 'kv__k', text: k }),
     el('span', { class: 'kv__v', text: v }),
   ])));
   openModal({
     title: '账号信息',
-    desc: u.signature ? '个性签名：' + u.signature : '登录凭证保存在本机，不会发送到界面层。',
+    desc: anon
+      ? '这个账号是在网易云 App 里以游客态扫码的：收藏、订阅、每日推荐都可用，但昵称头像不存在。想要个性化推荐，请在 App 内登录主账号后回来重新扫码。'
+      : (u.signature ? '个性签名：' + u.signature : '登录凭证保存在本机，不会发送到界面层。'),
     body,
     actions: [el('button', { class: 'btn btn--primary', text: '知道了', onclick: () => closeModal() })],
   });
