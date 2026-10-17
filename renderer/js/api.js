@@ -72,6 +72,9 @@ export const api = {
   platformList: () => dataOf(request('/platform/list')),
   platformSearch: (platform, keywords, page = 1, limit = 30) =>
     dataOf(request('/platform/search', { platform, keywords, page, limit })),
+  // 平台原生取链（酷狗匿名直链 / QQ 登录态或跨平台兜底）
+  platformUrl: (payload) => post('/platform/url', payload, 30000),
+  platformHealth: () => dataOf(request('/platform/health')),
   songUrl: (id) => request('/song/url', { id }),
   lyric: (id) => request('/lyric', { id }),
   // 歌词译文兜底：key 只存后端，渲染层拿不到

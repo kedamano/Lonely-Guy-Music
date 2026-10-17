@@ -14,6 +14,12 @@ export const FX_SCENES = {
   night: { label: '夜间', desc: '收窄动态范围，深夜不炸耳', bass: -3, width: 1, wet: 0.06, comp: 0.7 },
 };
 
+// 平台直链的扩展名 → MIME：酷狗常返回 application/octet-stream，需由代理层纠正
+const AUDIO_CT = {
+  mp3: 'audio/mpeg', m4a: 'audio/mp4', mp4: 'audio/mp4', flac: 'audio/flac',
+  aac: 'audio/aac', wav: 'audio/wav', ogg: 'audio/ogg', opus: 'audio/ogg',
+};
+
 export class Player {
   constructor() {
     this.audio = new Audio();
@@ -250,18 +256,50 @@ export class Player {
     if (token !== this._token) return null;
 
     if (platform !== 'wy') {
-      if (!hasSources) {
-        throw new Error(`这首来自${platform === 'tx' ? 'QQ 音乐' : platform === 'kg' ? '酷狗音乐' : platform}，需先在「设置 → 自定义源」启用支持该平台的音源`);
-      }
       const q = store.get('sourceQuality') || 'flac';
-      try {
-        const res = await api.resolveMusicUrl(platform, track.musicInfo, q);
-        if (token !== this._token) return null;
-        if (res && res.url) return '/api/proxy?url=' + encodeURIComponent(res.url);
-        throw new Error('音源未返回可用链接');
-      } catch (e) {
-        throw new Error(`取链失败：${e.message}`);
+      const errors = [];
+
+      // 1) 自定义音源（用户启用时优先）：能给出 flac/320，质量更好
+      if (hasSources) {
+        try {
+          const res = await api.resolveMusicUrl(platform, track.musicInfo, q);
+          if (token !== this._token) return null;
+          if (res && res.url) return '/api/proxy?url=' + encodeURIComponent(res.url);
+          errors.push('音源未返回链接');
+        } catch (e) {
+          errors.push('音源：' + e.message);
+        }
       }
+
+      // 2) 平台原生取链：酷狗匿名直链；QQ 有登录态则直连，否则跨平台兜底到酷狗同曲
+      try {
+        const r = await api.platformUrl({
+          platform,
+          musicInfo: track.musicInfo || {},
+          name: track.name,
+          artist: track.artist,
+          duration: track.duration,
+          quality: q,
+        });
+        if (token !== this._token) return null;
+        if (r && r.url) {
+          this.lastResolve = { from: r.from, matched: r.matched || null, bitRate: r.bitRate || 0 };
+          if (r.matched && r.from !== 'kugou-native') {
+            // 换了来源或版本必须告知：用户点的是原曲，实际播的可能是别的收录版本
+            const prefix = r.from === 'kugou-fallback'
+              ? `${platform === 'tx' ? 'QQ 音乐' : '该平台'}取链受限，已切换到酷狗同曲`
+              : '原曲无免费音源，已切换到同曲其他版本';
+            this.emit('notice', { text: `${prefix}：${r.matched.name} · ${r.matched.artist}` });
+          }
+          const ct = AUDIO_CT[r.ext] || '';
+          return '/api/proxy?url=' + encodeURIComponent(r.url) + (ct ? '&ct=' + encodeURIComponent(ct) : '');
+        }
+        errors.push('平台接口未返回链接');
+      } catch (e) {
+        errors.push('平台：' + e.message);
+      }
+
+      throw new Error(`取链失败（${errors.join('；')}）`);
     }
 
     // 优先走 LX Music 自定义音源（wy=网易云，因为搜索来自网易云）
@@ -308,11 +346,14 @@ export class Player {
       const platform = track.platform || 'wy';
       try {
         if (platform !== 'wy') {
-          // 非网易云平台：歌词只能问音源要
-          const r = await api.sourceLyric(platform, track.musicInfo);
-          if (token !== this._token) return;
-          const raw = r && (typeof r.lyric === 'string' ? r.lyric : r.lyric && r.lyric.lyric);
-          lines = parseLRC(raw);
+          // 非网易云平台：歌词只能问音源要。没启用音源时不发请求，
+          // 否则后端没有该路由会回 404，浏览器控制台会留下红色报错。
+          if (await api.hasEnabledSources()) {
+            const r = await api.sourceLyric(platform, track.musicInfo);
+            if (token !== this._token) return;
+            const raw = r && (typeof r.lyric === 'string' ? r.lyric : r.lyric && r.lyric.lyric);
+            lines = parseLRC(raw);
+          }
         } else {
           const r = await api.lyric(track.id);
           if (token !== this._token) return;

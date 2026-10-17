@@ -13,7 +13,8 @@
     "fonts": "node scripts/build-fonts.js",
     "dist": "npm run icons && electron-builder --win nsis --publish never",
     "dist:dir": "npm run icons && electron-builder --win dir",
-    "dist:publish": "npm run icons && electron-builder --win nsis --publish always"
+    "dist:publish": "npm run icons && electron-builder --win nsis --publish always",
+    "check:platform": "node scripts/platform-url-check.js"
   },
   "dependencies": {
     "cors": "^2.8.5",

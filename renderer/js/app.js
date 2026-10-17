@@ -1788,6 +1788,8 @@ player.on('time', (cur, dur) => {
   updateTaskbarProgress(cur, dur);
 });
 player.on('lyric', (lines) => renderLyrics(lines));
+// 取链降级提示（QQ → 酷狗同曲）：轻提示，不打断播放
+player.on('notice', (m) => { if (m && m.text) toast(m.text, 4200); });
 player.on('error', (m) => {
   toast('⚠ ' + m, 6500, 'error');
   // 播放条同步进入错误态（标题变红），错过 toast 也能看见

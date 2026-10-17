@@ -10,7 +10,7 @@
 
 [![Version](https://img.shields.io/badge/version-1.2.0-ff6a2c?style=flat-square)](https://github.com/kedamano/Lonely-Guy-Music/releases)
 [![Electron](https://img.shields.io/badge/Electron-44-47848F?style=flat-square&logo=electron&logoColor=white)](https://www.electronjs.org/)
-[![Tests](https://img.shields.io/badge/tests-160%20checks-passing-3fb950?style=flat-square)](#-ui-回归测试)
+[![Tests](https://img.shields.io/badge/tests-174%20checks-passing-3fb950?style=flat-square)](#-ui-回归测试)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-8957e5?style=flat-square)](https://github.com/kedamano/Lonely-Guy-Music/releases)
 [![License](https://img.shields.io/badge/license-MIT-c9d1d9?style=flat-square)](LICENSE)
 [![i18n](https://img.shields.io/badge/语言-简体%20%7C%20繁體%20%7C%20EN-ff6a2c?style=flat-square)](#-界面语言)
@@ -62,7 +62,7 @@
 | 功能 | 说明 |
 |---|---|
 | 发现 / 音乐馆 / 搜索 | 精选歌单墙、分类浏览、输入即搜（300ms 防抖）+ 回车执行，切页保留关键词与结果 |
-| **多平台搜索** | 一键切换 **网易云 / QQ 音乐 / 酷狗**，直接按平台检索，跳出网易云元数据；QQ 拿到 songmid、酷狗拿到 FileHash，可直接交给音源取链播放 |
+| **多平台搜索** | 一键切换 **网易云 / QQ 音乐 / 酷狗**，直接按平台检索，跳出网易云元数据；酷狗走匿名原生直链、QQ 自动兜底到酷狗同曲，**不配音源也能播** |
 | 歌单详情 | 一键播放全部 / 随机播放 / 整单加入队列 |
 | 播放控制 | 播放/暂停/上一首/下一首、列表·单曲·顺序三种循环、拖拽进度与音量 |
 | 播放队列 | 抽屉式管理，可增删、跳播，插入位置可选顶部/底部 |
@@ -218,6 +218,7 @@ server/
   mock.js             离线示例数据（与网易云响应结构一致）
   source-manager.js   洛雪音源运行时：vm 沙箱执行音源脚本、lx API 实现、URL/歌词/封面解析
   platform-search.js  多平台搜索：QQ 音乐（vkeys）/ 酷狗（官方搜索接口）适配与统一曲目结构
+  platform-url.js     平台原生取链：酷狗匿名直链 + QQ 跨平台兜底 + 结果缓存
   account.js          账号能力
   library.js          本地曲库
   translate.js        歌词翻译
@@ -277,9 +278,30 @@ scripts/
 
 ---
 
+## 🔗 多平台取链策略
+
+QQ / 酷狗曲目的播放地址不走网易云，也不强依赖音源脚本，而是三层降级：
+
+| 顺序 | 环节 | 说明 |
+|---|---|---|
+| 1 | 洛雪音源 | 用户启用了音源时优先，能给出 FLAC / 320K |
+| 2 | 平台原生 | 酷狗移动端 `playInfo` 接口匿名即可取到完整直链（无需登录、无需签名） |
+| 3 | 跨平台兜底 | QQ 的 `vkey` 与 `uin` 绑定、匿名拿不到，改用「歌名 + 歌手 + 时长」到酷狗检索同一首播放 |
+
+命中兜底或换了收录版本时，界面会明确提示实际播放的曲目，不会静默替换。
+
+**为什么 QQ 不能像网易云那样本地反代**：网易云的取链接口匿名即给 128K，返回的是服务端签好名的无状态 CDN 直链；QQ 的 `vkey` 与 `uin + guid` 强绑定，匿名请求 `purl` 恒为空（实测 `104003` / `1000`），必须登录态。酷狗的 `play/songinfo` 需要 `signature`（盐值随网页版改版变化），但移动端 `playInfo` 匿名可用——这也是原生取链默认只对酷狗开启的原因。
+
+**已知限制**：
+
+- 免费收录以 128K 为主；VIP 曲目（如周杰伦原版）通常只有翻唱或其他收录版本可播；
+- 未提供 QQ 登录入口。需要 QQ 原声时，可在 `userData/platform-auth.json` 写入 `{ "tx": { "uin": "你的QQ号", "qmKeyst": "cookie 里的 qm_keyst" } }`，取链会优先走 QQ 官方 vkey。
+
+---
+
 ## 🧪 UI 回归测试
 
-基于 Playwright 的真实交互回归（共 **160 项断言**）：
+基于 Playwright 的真实交互回归（共 **174 项断言**）：
 
 ```bash
 npm start                        # 或 ENABLE_NCM=0 node server/index.js
@@ -287,6 +309,7 @@ node scripts/ui-check.js         # 65 项交互检查 + 截图
 node scripts/ui-smoke.js         # 64 项全量冒烟（封面加载/分页/设置/语言切换…）
 node scripts/proxy-check.js      # 12 项代理机制单测
 node scripts/search-guide-check.js # 19 项搜索引导与多语言检查
+node scripts/platform-url-check.js # 14 项多平台取链（匹配打分 + 酷狗直链 + QQ 兜底）
 ```
 
 覆盖范围：实时搜索 / 切 tab / 播放 / 拖拽进度 / 收藏 / 队列 / 歌词浮层 / 声场 EQ 与睡眠 / 本地音频导入播放 / 迷你模式 / 响应式布局 / 全部设置分区 / 封面真实加载断言 / 运行时 console 错误检查。截图输出到 `scripts/shots/`。

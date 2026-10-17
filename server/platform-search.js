@@ -114,8 +114,10 @@ async function searchKg(keyword, page, limit) {
     .map((x) => {
       const hash = String(x.FileHash || x.HQFileHash || '');
       const name = String(x.SongName || x.FileName || '').replace(/<[^>]+>/g, '');
-      const singer = String(x.SingerName || '').split(/[、,&]/).map((s) => s.trim()).filter(Boolean).join('/');
-      const album = String(x.AlbumName || '');
+      // 酷狗搜索会在命中词上加 <em> 高亮，必须剥掉，否则歌手名带着标签参与匹配和显示
+      const strip = (s) => String(s || '').replace(/<[^>]+>/g, '');
+      const singer = strip(x.SingerName).split(/[、,&]/).map((s) => s.trim()).filter(Boolean).join('/');
+      const album = strip(x.AlbumName);
       const pic = String(x.Image || '').replace('{size}', '480');
       const sec = Number(x.Duration || 0);
       return {
@@ -137,6 +139,12 @@ async function searchKg(keyword, page, limit) {
           albumName: album,
           interval: sec,
           img: pic,
+          // 原生取链用：三档 hash（flac / 320 / 128），供 platform-url 依次尝试
+          hashes: {
+            flac: String(x.SQFileHash || ''),
+            '320': String(x.HQFileHash || ''),
+            '128': String(x.FileHash || ''),
+          },
         },
       };
     })

@@ -10,7 +10,7 @@ NetEase online library · LX Music custom sources · Live spectrum · Karaoke ly
 
 [![Version](https://img.shields.io/badge/version-1.2.0-ff6a2c?style=flat-square)](https://github.com/kedamano/Lonely-Guy-Music/releases)
 [![Electron](https://img.shields.io/badge/Electron-44-47848F?style=flat-square&logo=electron&logoColor=white)](https://www.electronjs.org/)
-[![Tests](https://img.shields.io/badge/tests-160%20checks-passing-3fb950?style=flat-square)](#-ui-regression-tests)
+[![Tests](https://img.shields.io/badge/tests-174%20checks-passing-3fb950?style=flat-square)](#-ui-regression-tests)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-8957e5?style=flat-square)](https://github.com/kedamano/Lonely-Guy-Music/releases)
 [![License](https://img.shields.io/badge/license-MIT-c9d1d9?style=flat-square)](LICENSE)
 
@@ -249,9 +249,30 @@ Fully compatible with [LX Music custom source scripts](https://lxmusic.toside.cn
 
 ---
 
+## 🔗 Multi-Platform Track Resolution
+
+QQ / Kugou tracks never touch the NetEase API, and they do not hard-depend on source scripts either — resolution degrades through three layers:
+
+| Order | Layer | Notes |
+|---|---|---|
+| 1 | LX source script | Used first when the user has one enabled; can deliver FLAC / 320K |
+| 2 | Platform native | Kugou's mobile `playInfo` endpoint returns a full direct link anonymously (no login, no signature) |
+| 3 | Cross-platform fallback | QQ's `vkey` is bound to `uin`, so anonymous requests return nothing — search Kugou by title / artist / duration and play the same track |
+
+When a fallback or an alternate recording is used, the UI says so explicitly; tracks are never swapped silently.
+
+**Why QQ can't be reverse-proxied like NetEase**: NetEase's URL endpoint hands out 128K even when anonymous, and returns a stateless, server-signed CDN link. QQ's `vkey` is bound to `uin + guid`, and anonymous calls return an empty `purl` (observed `104003` / `1000`) — a login state is mandatory. Kugou's `play/songinfo` requires a `signature` whose salt changes with each web release, but its mobile `playInfo` endpoint works anonymously. That asymmetry is why native resolution is enabled only for Kugou by default.
+
+**Known limitations**:
+
+- Free catalogue entries are mostly 128K; VIP tracks (e.g. Jay Chou originals) usually resolve only to covers or other recordings.
+- There is no QQ login UI. To get QQ originals, write `{ "tx": { "uin": "your-qq-id", "qmKeyst": "qm_keyst from cookie" } }` into `userData/platform-auth.json` and resolution will prefer the official QQ vkey.
+
+---
+
 ## 🧪 UI Regression Tests
 
-Playwright-based real-interaction regression (**160 assertions** total):
+Playwright-based real-interaction regression (**174 assertions** total):
 
 ```bash
 npm start                        # or ENABLE_NCM=0 node server/index.js
@@ -259,6 +280,7 @@ node scripts/ui-check.js         # 65 interaction checks + screenshots
 node scripts/ui-smoke.js         # 64 full smoke checks (covers/pagination/settings/i18n…)
 node scripts/proxy-check.js      # 12 proxy mechanism unit tests
 node scripts/search-guide-check.js # 19 search-guide & i18n checks
+node scripts/platform-url-check.js # 14 platform resolution (scoring + Kugou link + QQ fallback)
 ```
 
 Covers: live search / tab switching / playback / seek dragging / favorites / queue / lyrics overlay / soundstage EQ & sleep / local audio import & playback / mini mode / responsive layout / every settings section / real cover-load assertions / runtime console error checks. Screenshots go to `scripts/shots/`.
@@ -267,12 +289,13 @@ Covers: live search / tab switching / playback / seek dragging / favorites / que
 
 ## 🗺 Roadmap
 
-- [ ] Multi-platform search beyond NetEase metadata
-- [ ] Cloud playlist sync / full account login
-- [ ] macOS / Linux installers
-- [ ] Audio chain extensions (spatial audio / scene presets)
-
-Already available ✅: in-app auto-update (`electron-updater` + GitHub Releases feed — new versions prompt on launch)
+- [x] **Multi-platform search**: NetEase / QQ Music / Kugou, queried directly per platform
+- [x] **Cloud playlist sync / account login**: QR code + phone captcha + email password; cloud playlists play directly
+- [x] **macOS / Linux installers**: dmg / zip / AppImage / deb, built by a three-platform GitHub Actions matrix
+- [x] **Audio chain extensions**: spatial audio (M/S widening + convolution reverb + compression) and 5 scene presets
+- [x] **Auto-update loop**: `electron-updater` against the GitHub Releases feed — new versions prompt on launch
+- [ ] Migu / Qishui search sources
+- [ ] Two-way playlist editing (add/remove cloud playlists in-app)
 
 ---
 

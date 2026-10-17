@@ -20,6 +20,7 @@ const account = require('./account');
 const library = require('./library');
 const translate = require('./translate');
 const platformSearch = require('./platform-search');
+const platformUrl = require('./platform-url');
 
 // 监听地址：仅本机回环。/api 会注入登录 cookie，绑 0.0.0.0 会把它暴露给整个局域网。
 const HOST_BIND = process.env.HOST_BIND || '127.0.0.1';
@@ -34,6 +35,9 @@ let actualPort = null;
 const DATA_DIR = process.env.GUMAN_USER_DATA
   ? process.env.GUMAN_USER_DATA
   : path.join(__dirname, '../userData');
+
+// 平台账号 cookie（QQ 取链需要登录态）落在用户目录，和音源配置同级别
+platformUrl.setAuthPath(path.join(DATA_DIR, 'platform-auth.json'));
 
 const app = express();
 app.use(express.json({ limit: '2mb' }));
@@ -174,6 +178,24 @@ app.get('/api/platform/search', async (req, res) => {
   } catch (e) {
     res.status(502).json({ code: 502, msg: e.message || '平台搜索失败' });
   }
+});
+
+// 平台原生取链：不依赖洛雪音源，酷狗匿名可用；QQ 无登录态时跨平台兜底到酷狗
+app.post('/api/platform/url', async (req, res) => {
+  const { platform, musicInfo, name, artist, duration, quality } = req.body || {};
+  if (!platform) return res.status(400).json({ code: 400, msg: '缺少 platform' });
+  try {
+    const data = await platformUrl.resolvePlatformUrl({
+      platform, musicInfo, name, artist, duration, quality,
+    });
+    res.json({ code: 0, data, online });
+  } catch (e) {
+    res.status(502).json({ code: 502, msg: e.message || '平台取链失败' });
+  }
+});
+
+app.get('/api/platform/health', (req, res) => {
+  res.json({ code: 0, data: platformUrl.getHealth(), online });
 });
 
 // ============== 账号 API（凭证不出后端） ==============
@@ -409,13 +431,20 @@ app.get('/api/proxy', async (req, res) => {
     const host = new URL(u).host.toLowerCase();
     const headers = { 'User-Agent': 'Mozilla/5.0' };
     if (host.includes('163.com') || host.includes('netease') || host.includes('126.net')) headers['Referer'] = 'https://music.163.com/';
+    if (host.includes('kugou.com')) headers['Referer'] = 'https://www.kugou.com/';
     if (req.headers.range) headers['Range'] = req.headers.range;
     const upstream = await fetch(u, { headers });
     res.status(upstream.status);
-    ['content-type', 'content-length', 'accept-ranges', 'content-range'].forEach((h) => {
+    ['content-length', 'accept-ranges', 'content-range'].forEach((h) => {
       const v = upstream.headers.get(h);
       if (v) res.set(h, v);
     });
+    // 酷狗直链常返回 application/octet-stream，<audio> 会拒绝播放；
+    // 取链方知道真实格式（ext），通过 ct 参数带过来，仅在类型不可用时覆盖。
+    const upCt = upstream.headers.get('content-type') || '';
+    const forceCt = req.query.ct;
+    const ct = forceCt && (!upCt || /octet-stream/i.test(upCt)) ? String(forceCt) : upCt;
+    if (ct) res.set('content-type', ct);
     if (upstream.body && upstream.body.getReader) {
       const r = Readable.fromWeb(upstream.body);
       r.on('error', () => res.destroy());
