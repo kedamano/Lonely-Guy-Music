@@ -11,8 +11,9 @@
     "mock": "node server/mock.js",
     "icons": "node -e \"require('./assets/icon').writeIcons('build')\"",
     "fonts": "node scripts/build-fonts.js",
-    "dist": "npm run icons && electron-builder --win nsis",
-    "dist:dir": "npm run icons && electron-builder --win dir"
+    "dist": "npm run icons && electron-builder --win nsis --publish never",
+    "dist:dir": "npm run icons && electron-builder --win dir",
+    "dist:publish": "npm run icons && electron-builder --win nsis --publish always"
   },
   "dependencies": {
     "cors": "^2.8.5",

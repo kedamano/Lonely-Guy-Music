@@ -109,9 +109,16 @@
 
 ### 方式一：下载安装包（推荐）
 
-前往 [**Releases**](https://github.com/kedamano/Lonely-Guy-Music/releases) 下载 `GumanMusic-x.y.z-x64.exe`（Windows，NSIS 安装器）。
+前往 [**Releases**](https://github.com/kedamano/Lonely-Guy-Music/releases) 下载对应平台的安装包：
 
-> 安装包未做代码签名，首次运行时 SmartScreen 可能提示——点击「更多信息 → 仍要运行」即可。
+| 平台 | 文件 | 说明 |
+|---|---|---|
+| Windows x64 | `GumanMusic-x.y.z-x64.exe` | NSIS 安装器 |
+| macOS Intel | `GumanMusic-x.y.z-x64.dmg` | Apple Silicon 用 `-arm64.dmg` |
+| Linux x64 | `GumanMusic-x.y.z-x86_64.AppImage` | 免安装，`chmod +x` 后直接运行 |
+| Debian / Ubuntu | `GumanMusic-x.y.z-amd64.deb` | `sudo dpkg -i` 安装 |
+
+> 安装包未做代码签名：Windows 首次运行 SmartScreen 提示点「更多信息 → 仍要运行」；macOS 需在「系统设置 → 隐私与安全性」放行。
 
 ### 方式二：从源码运行
 

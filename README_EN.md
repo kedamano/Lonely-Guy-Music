@@ -86,9 +86,16 @@ Guman Music aims to do both well —
 
 ### Option 1: Download the installer (recommended)
 
-Grab `GumanMusic-x.y.z-x64.exe` (Windows, NSIS) from [**Releases**](https://github.com/kedamano/Lonely-Guy-Music/releases).
+Grab the build for your platform from [**Releases**](https://github.com/kedamano/Lonely-Guy-Music/releases):
 
-> The installer is not code-signed yet; SmartScreen may warn on first run — click "More info → Run anyway".
+| Platform | File | Notes |
+|---|---|---|
+| Windows x64 | `GumanMusic-x.y.z-x64.exe` | NSIS installer |
+| macOS Intel | `GumanMusic-x.y.z-x64.dmg` | Use `-arm64.dmg` on Apple Silicon |
+| Linux x64 | `GumanMusic-x.y.z-x86_64.AppImage` | `chmod +x` and run |
+| Debian / Ubuntu | `GumanMusic-x.y.z-amd64.deb` | `sudo dpkg -i` |
+
+> Builds are not code-signed: on Windows SmartScreen shows a warning ("More info → Run anyway"); on macOS allow the app in System Settings → Privacy & Security.
 
 ### Option 2: Run from source
 
