@@ -1,6 +1,6 @@
 'use strict';
 /**
- * 平台原生取链：不依赖洛雪音源，直接走各平台公开接口。
+ * 平台取链编排：原生直链优先，失败后跨源找同曲。
  *
  * 为什么需要这一层（实测结论）：
  *   - 酷狗 `m.kugou.com/app/i/getSongInfo.php?cmd=playInfo&hash=xxx` 匿名即返回完整音频直链，
@@ -9,40 +9,44 @@
  *
  * 因此策略是：
  *   1) 酷狗曲目 → 原生直链（多 hash 依次尝试：flac → 320 → 128）
- *   2) QQ 曲目  → 有 cookie 走 vkey；无 cookie 时跨平台兜底，按「歌名 + 歌手 + 时长」
- *      到酷狗检索同一首，用酷狗直链播放
+ *   2) QQ 曲目  → 有 cookie 走 vkey；无 cookie 时跨平台兜底
+ *   3) 兜底按「歌名 + 歌手 + 时长」到其他平台检索同一首
  *
  * 取链结果进内存缓存（TTL 25 分钟），避免同一首歌反复请求上游。
+ * 缓存键包含音质，切换音质会重新取链。
  */
 const fs = require('fs');
-const path = require('path');
-const { requestAsync } = require('./source-manager');
+const kugou = require('./platforms/kugou');
+const kuwo = require('./platforms/kuwo');
+const qq = require('./platforms/qq');
+const ncm = require('./ncm-client');
 const { searchPlatform } = require('./platform-search');
-
-const MOBILE_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1';
-const DESKTOP_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+const { probeAudio, validateProbe, parseContentRange, mp3Probe, PLACEHOLDER_BYTES } = require('./audio-probe');
+const {
+  normName,
+  similarity,
+  artistTokens,
+  variantTag,
+  sameSong,
+  mergeTracks,
+  hashKey,
+} = require('./song-utils');
 
 const CACHE_TTL = 25 * 60 * 1000;
 const CACHE_MAX = 400;
-const PLAYABLE_EXT = new Set(['mp3', 'm4a', 'flac', 'aac', 'wav', 'ogg', 'opus']);
 
 const cache = new Map(); // key -> { data, exp }
+// 负缓存：校验失败的地址 60 秒内不再重复探测（避免每次播放都等 4.5s 超时）
+const negative = new Map(); // key -> { message, exp }
+const NEGATIVE_TTL = 60 * 1000;
 // 平台健康度：连续失败达到阈值后前端可提示「该平台取链受限」
-const health = { tx: { fails: 0, lastError: '', lastOk: 0 }, kg: { fails: 0, lastError: '', lastOk: 0 } };
+const health = {
+  tx: { fails: 0, lastError: '', lastOk: 0 },
+  kg: { fails: 0, lastError: '', lastOk: 0 },
+  kw: { fails: 0, lastError: '', lastOk: 0 },
+};
 
 // ============== 工具 ==============
-
-async function getJson(url, headers = {}, timeout = 12000) {
-  const r = await requestAsync(url, {
-    timeout,
-    headers: { 'User-Agent': MOBILE_UA, Accept: 'application/json, text/plain, */*', ...headers },
-  });
-  if (r.statusCode >= 400) throw new Error(`上游返回 HTTP ${r.statusCode}`);
-  const body = r.body;
-  if (body && typeof body === 'object') return body;
-  const text = String(body || '');
-  try { return JSON.parse(text); } catch { throw new Error('上游返回的不是合法 JSON'); }
-}
 
 function cacheGet(key) {
   const hit = cache.get(key);
@@ -58,6 +62,53 @@ function cacheSet(key, data) {
     if (!oldest.done) cache.delete(oldest.value);
   }
   cache.set(key, { data, exp: Date.now() + CACHE_TTL });
+}
+
+function negativeGet(key) {
+  const hit = negative.get(key);
+  if (!hit) return null;
+  if (hit.exp <= Date.now()) { negative.delete(key); return null; }
+  return hit.message;
+}
+
+function negativeSet(key, message) {
+  if (negative.size >= CACHE_MAX) {
+    const oldest = negative.keys().next();
+    if (!oldest.done) negative.delete(oldest.value);
+  }
+  negative.set(key, { message, exp: Date.now() + NEGATIVE_TTL });
+}
+
+/**
+ * 取链结果校验。
+ * 酷狗直链由 playInfo 的 timeLength 背书，只比对时长；其他来源（QQ vkey / 音源）
+ * 先探测前 64KB，识别 HTML 错误页、酷我 181521 字节试听占位与异常码率。
+ */
+async function validateResolved(result, { expectedDurationMs = 0 } = {}) {
+  if (!result || !result.url) return { ok: false, reason: '取链结果缺少地址' };
+
+  const from = String(result.from || '');
+  const expected = Number(expectedDurationMs || 0);
+  if (from.startsWith('kugou')) {
+    const got = Number(result.duration || 0);
+    if (expected > 0 && got > 0 && Math.abs(got - expected) > 20000) {
+      return { ok: false, reason: '酷狗返回的音频时长与曲目不符' };
+    }
+    return { ok: true, trusted: true, format: result.ext || null, totalBytes: null };
+  }
+
+  return probeAudio(result.url, { expectedDurationMs: expected });
+}
+
+/**
+ * 取链缓存键：平台 + 曲目标识 + 音质。
+ * 音质必须在键里——否则用户切到无损后仍会命中 128k 的旧结果。
+ */
+function cacheKey({ platform, musicInfo = {}, name = '', artist = '', quality = '320' }) {
+  const id = musicInfo.hash || musicInfo.songmid || musicInfo.rid
+    || musicInfo.contentId || musicInfo.media_mid
+    || `${hashKey(`${name}|${artist}`)}`;
+  return `${platform}:${id}:${quality || '320'}`;
 }
 
 function markOk(platform) {
@@ -88,193 +139,11 @@ function readAuth() {
   }
 }
 
-// ============== 酷狗原生取链 ==============
+// ============== 跨平台兜底：当前平台 → 同曲其他平台 ==============
 
 /**
- * 单 hash 取链。返回 null 表示该 hash 不可用（下架/加密/无版权），抛错表示网络异常。
- */
-async function kugouByHash(hash) {
-  const url = `https://m.kugou.com/app/i/getSongInfo.php?cmd=playInfo&hash=${encodeURIComponent(hash)}`;
-  const j = await getJson(url, { Referer: 'https://m.kugou.com/' });
-  if (!j || !j.url) {
-    const reason = j && (j.err || j.error) ? String(j.err || j.error) : '未返回播放地址';
-    const e = new Error(`酷狗：${reason}`);
-    e.soft = true; // 换下一个 hash 继续试
-    throw e;
-  }
-  const ext = String(j.extName || '').toLowerCase();
-  if (ext && !PLAYABLE_EXT.has(ext)) {
-    const e = new Error(`酷狗返回了不可播放的格式（${ext}）`);
-    e.soft = true;
-    throw e;
-  }
-  return {
-    url: String(j.url),
-    bitRate: Number(j.bitRate || 0),
-    ext: ext || 'mp3',
-    duration: Number(j.timeLength || 0) * 1000,
-    name: String(j.songName || ''),
-    artist: String(j.singerName || ''),
-    albumPic: String(j.img || ''),
-  };
-}
-
-/** 按音质偏好排列 hash */
-function hashOrder(musicInfo = {}, quality = '320') {
-  const h = musicInfo.hashes || {};
-  const base = String(musicInfo.hash || '');
-  const hq = String(h['320'] || musicInfo.hqHash || '');
-  const sq = String(h.flac || musicInfo.sqHash || '');
-  const order = quality === '128' ? [base, hq, sq]
-    : quality === '320' ? [hq, base, sq]
-      : [sq, hq, base];
-  return [...new Set(order.filter(Boolean))];
-}
-
-/**
- * 并发试多个 hash，返回第一个成功的。
- * 酷狗对 VIP 曲目会返回「需要付费」，这类失败很快且互不影响，并发比串行快数倍。
- */
-async function raceHashes(entries) {
-  if (!entries.length) return null;
-  const ps = entries.map((e) => kugouByHash(e.hash).then((v) => (
-    v && v.url ? { ...v, hash: e.hash, meta: e.meta || null } : Promise.reject(new Error('empty'))
-  )));
-  try {
-    return await Promise.any(ps);
-  } catch (_) {
-    return null;
-  }
-}
-
-/**
- * 检索同名曲目的其他收录版本。
- * 原版常为 VIP（连 128k 都报付费），但同一首歌往往有翻唱/合集等免费收录。
- *
- * 必须多路检索：`歌名 + 歌手` 召回被歌手锁死，只会返回该歌手的 VIP 版本；
- * 追加纯歌名一路才能捞到翻唱版（实测「晴天」纯歌名能搜到可播放的翻唱，带歌手则全是付费）。
- */
-async function collectKugouCandidates(name, artist, duration, { limit = 10, strict = true } = {}) {
-  if (!name) return [];
-  const mainArtist = artistTokens(artist)[0] || '';
-  const queries = [...new Set([`${name} ${mainArtist}`.trim(), name].filter(Boolean))];
-
-  const pool = new Map();
-  await Promise.all(queries.map(async (q) => {
-    try {
-      const r = await searchPlatform('kg', q, 1, 12);
-      for (const c of (r.list || [])) if (c && c.id && !pool.has(c.id)) pool.set(c.id, c);
-    } catch (_) { /* 单路失败不影响另一路 */ }
-  }));
-
-  return [...pool.values()]
-    .map((c) => ({ cand: c, score: similarity(c, { name, artist, duration }) }))
-    .filter((x) => x.score >= (strict ? 7 : 2))
-    .sort((a, b) => b.score - a.score)
-    .slice(0, limit);
-}
-
-/** 把候选摊平成 hash 列表并发试，返回首个可用直链 */
-async function tryCandidates(cands, quality) {
-  const entries = [];
-  for (const { cand, score } of cands) {
-    for (const hash of hashOrder(cand.musicInfo, quality).slice(0, 2)) {
-      entries.push({ hash, meta: { cand, score } });
-    }
-  }
-  return raceHashes(entries.slice(0, 10));
-}
-
-/**
- * 酷狗取链（尽力而为）：
- *   1) 本曲三档 hash 并发（flac → 320 → 128）
- *   2) 全失败（多为 VIP 曲）→ 严格召回同名版本
- *   3) 仍失败 → 宽松召回（同名即可，按时长接近度排序）
- */
-async function kugouBestEffort(musicInfo = {}, { quality = '320', name, artist, duration } = {}) {
-  const ownHashes = hashOrder(musicInfo, quality);
-  if (ownHashes.length) {
-    const own = await raceHashes(ownHashes.map((hash) => ({ hash })));
-    if (own) return { ...own, from: 'kugou-native', matched: null };
-  }
-
-  const pack = (hit, loose) => {
-    const m = hit.meta;
-    return {
-      ...hit,
-      from: loose ? 'kugou-loose' : 'kugou-alt',
-      matched: m ? { name: m.cand.name, artist: m.cand.artist, score: m.score, id: m.cand.id, loose: !!loose } : null,
-    };
-  };
-
-  const strictCands = await collectKugouCandidates(name, artist, duration, { strict: true });
-  const strictHit = await tryCandidates(strictCands, '128');
-  if (strictHit) return pack(strictHit, false);
-
-  const looseCands = await collectKugouCandidates(name, artist, duration, { strict: false });
-  const looseHit = await tryCandidates(looseCands, '128');
-  if (looseHit) return pack(looseHit, true);
-
-  const err = ownHashes.length
-    ? new Error('酷狗未返回可用地址（该曲可能是付费/无版权曲目）')
-    : new Error('酷狗取链缺少 hash（曲目信息不完整）');
-  err.soft = true;
-  throw err;
-}
-
-// ============== 跨平台兜底：QQ → 酷狗同曲 ==============
-
-function normName(s) {
-  return String(s || '')
-    .replace(/[（(][^）)]*[）)]/g, '')   // 去掉括号内容（feat./伴奏/remix 等）
-    .replace(/[（(].*$/, '')
-    .replace(/[\s\-_·、,，.。!！?？'"“”‘’()（）\[\]【】/\\]/g, '')
-    .toLowerCase();
-}
-
-function artistTokens(s) {
-  return String(s || '')
-    .split(/[/、,&;；]/)
-    .map((t) => t.trim().toLowerCase())
-    .filter(Boolean);
-}
-
-// 变体标记：这些版本虽可播放，但与用户点选的原曲有听感差异，排序时需要降权
-const VARIANT_RE = /(伴奏|纯音乐|instrumental|\bdj\b|remix|环绕|\b8d\b|\b3d\b|降调|升调|加速|慢速|倍速|live|演唱会|翻唱|cover|片段|铃声|钢琴|吉他|古筝|女声|男声|童声|合唱|独唱)/i;
-
-/** 候选曲目与目标曲目的相似度打分 */
-function similarity(cand, target) {
-  const a = normName(cand.name);
-  const b = normName(target.name);
-  if (!a || !b) return -1;
-  let score = 0;
-  if (a === b) score += 6;
-  else if (a.includes(b) || b.includes(a)) score += 3;
-  else return -1; // 歌名都不沾边，直接淘汰
-
-  const tokens = artistTokens(target.artist);
-  const candArtist = String(cand.artist || '').toLowerCase().replace(/\s/g, '');
-  const artistHit = tokens.some((t) => t && candArtist.includes(t.replace(/\s/g, '')));
-  if (artistHit) score += 4;
-
-  const cd = Number(cand.duration || 0);
-  const td = Number(target.duration || 0);
-  if (cd && td) {
-    const diff = Math.abs(cd - td) / 1000;
-    if (diff <= 8) score += 4;
-    else if (diff <= 20) score += 1;
-    else if (diff <= 60) score -= 1;
-    else score -= 4;
-  }
-
-  // 变体降权（DJ/伴奏/Live/女声版…）：能播但听感不同，有原版时优先原版
-  if (VARIANT_RE.test(String(cand.name || ''))) score -= 2;
-  return score;
-}
-
-/**
- * 到酷狗找同一首歌。用于 QQ 无法取链时兜底。
- * 命中后返回 { url, ... , matched: { name, artist, score } }，找不到返回 null
+ * 到酷狗找同一首歌。命中后返回 { url, ... , matched: { name, artist, score } }。
+ * 严格匹配失败后放宽到同名（按时长接近度排序），仍找不到返回 null。
  */
 async function fallbackToKugou({ name, artist, duration }) {
   if (!name) return null;
@@ -284,139 +153,276 @@ async function fallbackToKugou({ name, artist, duration }) {
     return {
       ...hit,
       from: 'kugou-fallback',
+      sourcePlatform: 'kg',
       matched: { name: cand.name, artist: cand.artist, score, id: cand.id, loose: !!loose },
     };
   };
 
-  const strictHit = await tryCandidates(
-    await collectKugouCandidates(name, artist, duration, { strict: true }), '128',
+  const strictHit = await kugou.tryCandidates(
+    await kugou.collectCandidates(name, artist, duration, { strict: true }), '128',
   );
   if (strictHit && strictHit.meta) return pack(strictHit, false);
 
-  const looseHit = await tryCandidates(
-    await collectKugouCandidates(name, artist, duration, { strict: false }), '128',
+  const looseHit = await kugou.tryCandidates(
+    await kugou.collectCandidates(name, artist, duration, { strict: false }), '128',
   );
   if (looseHit && looseHit.meta) return pack(looseHit, true);
   return null;
 }
 
-// ============== QQ 原生取链（需登录态） ==============
+function ncmBr(quality) {
+  if (quality === 'flac' || quality === 'flac24bit') return 999000;
+  if (quality === '128') return 128000;
+  return 320000;
+}
 
-/** QQ vkey 必须 POST，单独实现 */
-async function qqVkeyPost(musicInfo, auth, quality) {
-  const mid = String(musicInfo.songmid || '');
-  if (!mid) throw new Error('QQ 取链缺少 songmid');
-  if (!auth || !auth.uin || !auth.qmKeyst) throw new Error('未配置 QQ 登录态');
+function searchQueries(name, artist) {
+  const main = artistTokens(artist)[0] || '';
+  return [...new Set([`${name} ${main}`.trim(), name].filter(Boolean))].slice(0, 2);
+}
 
-  const guid = String(1000000000 + Math.floor(Math.random() * 8999999999));
-  const q = quality === 'flac' ? 'F000' : quality === '128' ? 'M500' : 'M800';
-  const ext = quality === 'flac' ? 'flac' : 'mp3';
-  const body = {
-    req_0: {
-      module: 'vkey.GetVkeyServer',
-      method: 'CgiGetVkey',
-      param: {
-        guid,
-        songmid: [mid],
-        songtype: [0],
-        uin: String(auth.uin),
-        loginflag: 1,
-        platform: '20',
-        filename: [`${q}${mid}${mid}.${ext}`],
-      },
-    },
-    comm: { uin: Number(auth.uin) || 0, format: 'json', ct: 24, cv: 0 },
-  };
-  const r = await requestAsync('https://u.y.qq.com/cgi-bin/musicu.fcg?format=json', {
-    method: 'POST',
-    timeout: 12000,
-    headers: {
-      'User-Agent': DESKTOP_UA,
-      'Content-Type': 'application/json',
-      Referer: 'https://y.qq.com/',
-      Cookie: `uin=${auth.uin}; qm_keyst=${auth.qmKeyst}`,
-    },
-    body: JSON.stringify(body),
-  });
-  let j = r.body;
-  if (typeof j === 'string') { try { j = JSON.parse(j); } catch { throw new Error('QQ 接口返回非法 JSON'); } }
-  const d = j && j.req_0 && j.req_0.data;
-  const info = d && d.midurlinfo && d.midurlinfo[0];
-  const purl = info && info.purl;
-  if (!purl) throw new Error(`QQ 未返回播放地址（${(info && info.errtype) || (j && j.req_0 && j.req_0.code) || '未知'}）`);
-  const sip = (d.sip && d.sip[0]) || 'https://dl.stream.qqmusic.qq.com/';
+/** 网易云同曲兜底：NCM 搜「歌名 + 歌手」→ 严格相似度 → /song/url */
+async function resolveNeteaseFallback({ name, artist, duration, quality }) {
+  if (!name || !ncm.isReady()) return null;
+
+  let best = null;
+  for (const q of searchQueries(name, artist)) {
+    const songs = await ncm.searchSongs(q, 10);
+    for (const s of songs) {
+      const score = similarity(s, { name, artist, duration });
+      if (score >= 7 && (!best || score > best.score)) best = { song: s, score };
+    }
+    if (best) break;
+  }
+  if (!best) return null;
+
+  const u = await ncm.songUrl(best.song.id, ncmBr(quality));
+  if (!u || !u.url) return null;
   return {
-    url: sip + purl,
-    bitRate: quality === 'flac' ? 900 : quality === '128' ? 128 : 320,
-    ext,
-    duration: 0,
-    from: 'qq-native',
-    matched: null,
+    ...u,
+    from: 'wy-fallback',
+    sourcePlatform: 'wy',
+    matched: {
+      name: best.song.name,
+      artist: best.song.artist,
+      score: best.score,
+      id: `wy:${best.song.id}`,
+    },
   };
+}
+
+/**
+ * 酷我同曲兜底：严格（≥7）→ 宽松（≥2）。
+ * 与酷狗兜底不同，这里先搜索拿到 rid，再走 anti.s 取链。
+ */
+async function resolveKuwoFallback({ name, artist, duration, quality }) {
+  if (!name) return null;
+  const target = { name, artist, duration };
+  const queries = searchQueries(name, artist);
+
+  for (const threshold of [7, 2]) {
+    const pool = new Map();
+    for (const q of queries) {
+      try {
+        const r = await searchPlatform('kw', q, 1, 10);
+        for (const c of r.list || []) {
+          if (c && c.id && !pool.has(c.id)) pool.set(c.id, c);
+        }
+      } catch (_) { /* 单路失败继续 */ }
+    }
+    const cands = [...pool.values()]
+      .map((c) => ({ cand: c, score: similarity(c, target) }))
+      .filter((x) => x.score >= threshold)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 2);
+
+    for (const { cand, score } of cands) {
+      try {
+        const hit = await kuwo.resolve(cand.musicInfo, quality);
+        return {
+          ...hit,
+          from: 'kuwo-fallback',
+          sourcePlatform: 'kw',
+          matched: { name: cand.name, artist: cand.artist, score, id: cand.id, loose: threshold < 7 },
+        };
+      } catch (_) { /* 换下一个候选 */ }
+    }
+  }
+  return null;
+}
+
+// ============== 原生取链 ==============
+
+/** 只走当前平台原生接口；不做跨源兜底（兜底由 resolvePlatformUrl 编排） */
+async function resolveNative(platform, { musicInfo = {}, quality = '320', name, artist, duration } = {}) {
+  if (platform === 'kg') {
+    return kugou.bestEffort(musicInfo, { quality, name, artist, duration });
+  }
+  if (platform === 'tx') {
+    const auth = readAuth().tx;
+    if (!auth || !auth.uin || !auth.qmKeyst) {
+      const e = new Error('QQ 需登录态取链');
+      e.soft = true;
+      throw e;
+    }
+    return qq.resolveVkey(musicInfo, auth, quality);
+  }
+  if (platform === 'kw') {
+    return kuwo.resolve(musicInfo, quality);
+  }
+  if (platform === 'wy') {
+    const id = musicInfo.id || musicInfo.songId || musicInfo.platformId;
+    if (!id) {
+      const e = new Error('网易云取链缺少歌曲 id');
+      e.soft = true;
+      throw e;
+    }
+    if (!ncm.isReady()) {
+      const e = new Error('网易云 API 不可用（离线模式）');
+      e.soft = true;
+      throw e;
+    }
+    const u = await ncm.songUrl(id, ncmBr(quality));
+    if (!u || !u.url) {
+      const e = new Error('网易云未返回播放地址（该曲可能是付费/无版权曲目）');
+      e.soft = true;
+      throw e;
+    }
+    return { ...u, from: 'wy-native', sourcePlatform: 'wy', matched: null };
+  }
+  const e = new Error(`${platform} 平台无原生取链（请通过自定义音源播放）`);
+  e.soft = true;
+  throw e;
+}
+
+function attemptId(platform, musicInfo = {}) {
+  return `${platform}:${musicInfo.hash || musicInfo.songmid || musicInfo.rid
+    || musicInfo.contentId || musicInfo.media_mid || musicInfo.id || ''}`;
 }
 
 // ============== 对外入口 ==============
 
 /**
  * 解析平台曲目的播放地址。
+ *
+ * 尝试顺序：当前平台原生 → 聚合行的备选来源 → 跨源兜底（酷狗同曲）。
+ * 每个结果都要通过 validateResolved：软失败（VIP/试听/未匹配）不计平台健康度。
+ *
  * @param {object} p
- * @param {'tx'|'kg'} p.platform
- * @param {object} p.musicInfo  搜索结果里的 musicInfo（含 hash/hashes/songmid）
+ * @param {'tx'|'kg'|'kw'|'mg'|'qs'} p.platform
+ * @param {object} p.musicInfo  搜索结果里的 musicInfo（含 hash/hashes/songmid/rid）
  * @param {string} p.name       歌名（兜底匹配用）
  * @param {string} p.artist     歌手
  * @param {number} p.duration   时长（毫秒）
  * @param {string} p.quality    期望音质
+ * @param {Array}  p.alternatives 聚合行的其他来源（同 sources 结构）
  */
-async function resolvePlatformUrl({ platform, musicInfo = {}, name, artist, duration, quality = '320' }) {
-  const key = `${platform}:${musicInfo.hash || musicInfo.songmid || `${name}|${artist}`}`;
+async function resolvePlatformUrl({
+  platform,
+  musicInfo = {},
+  name,
+  artist,
+  duration,
+  quality = '320',
+  alternatives = [],
+}) {
+  const key = cacheKey({ platform, musicInfo, name, artist, quality });
   const cached = cacheGet(key);
   if (cached) return { ...cached, cached: true };
+  const negativeMessage = negativeGet(key);
+  if (negativeMessage) {
+    const e = new Error(negativeMessage);
+    e.soft = true;
+    throw e;
+  }
 
-  let result = null;
+  const attempts = [];
+  const seen = new Set();
+  const push = (sourcePlatform, info, expected) => {
+    const id = attemptId(sourcePlatform, info);
+    if (seen.has(id)) return;
+    seen.add(id);
+    attempts.push({ sourcePlatform, musicInfo: info || {}, expected: Number(expected || 0) });
+  };
+
+  push(platform, musicInfo, duration);
+  for (const alt of Array.isArray(alternatives) ? alternatives : []) {
+    if (!alt || !alt.platform) continue;
+    push(alt.platform, alt.musicInfo || alt, alt.duration || duration);
+  }
+  // 跨源兜底：网易云同曲 → 酷我同曲 → 酷狗同曲（当前平台本身则跳过）
+  const pushSearchFallback = (sourcePlatform) => {
+    if (!name) return;
+    const id = `${sourcePlatform}-search:${name}|${artist}|${duration}`;
+    if (seen.has(id)) return;
+    seen.add(id);
+    attempts.push({ sourcePlatform, fallback: sourcePlatform, expected: Number(duration || 0) });
+  };
+  if (platform !== 'wy' && ncm.isReady()) pushSearchFallback('wy');
+  if (platform !== 'kw') pushSearchFallback('kw');
+  if (platform !== 'kg') pushSearchFallback('kg');
+
   let lastErr = null;
+  let nativeNetworkErr = null;
+  let first = true;
 
-  if (platform === 'kg') {
+  for (const a of attempts) {
+    let result = null;
     try {
-      result = await kugouBestEffort(musicInfo, { quality, name, artist, duration });
+      if (a.fallback === 'kg') {
+        result = await fallbackToKugou({ name, artist, duration });
+      } else if (a.fallback === 'wy') {
+        result = await resolveNeteaseFallback({ name, artist, duration, quality });
+      } else if (a.fallback === 'kw') {
+        result = await resolveKuwoFallback({ name, artist, duration, quality });
+      } else {
+        result = await resolveNative(a.sourcePlatform, {
+          musicInfo: a.musicInfo,
+          quality,
+          name,
+          artist,
+          duration: a.expected || duration,
+        });
+      }
+      if (!result && a.fallback) {
+        const e = new Error(`未在 ${{ kg: '酷狗', wy: '网易云', kw: '酷我' }[a.fallback] || a.sourcePlatform} 找到同一首`);
+        e.soft = true;
+        lastErr = e;
+        continue;
+      }
     } catch (e) {
       lastErr = e;
+      if (first && !(e && e.soft)) nativeNetworkErr = e;
+      first = false;
+      continue;
     }
-  } else if (platform === 'tx') {
-    const auth = readAuth().tx;
-    if (auth && auth.uin && auth.qmKeyst) {
-      try {
-        result = await qqVkeyPost(musicInfo, auth, quality);
-      } catch (e) {
-        lastErr = e;
-      }
+    first = false;
+
+    const expected = a.expected || Number(duration || 0) || Number(result.duration || 0);
+    const check = await validateResolved(result, { expectedDurationMs: expected });
+    if (!check.ok) {
+      const e = new Error(`取链校验失败：${check.reason || '音频校验未通过'}`);
+      e.soft = true;
+      lastErr = e;
+      continue;
     }
-    if (!result) {
-      // 无登录态 / vkey 失败 → 跨平台兜底
-      try {
-        result = await fallbackToKugou({ name, artist, duration });
-        if (!result && !lastErr) {
-          lastErr = new Error('QQ 需登录态取链，且未在酷狗找到同一首');
-          lastErr.soft = true; // 曲目属性，不是平台故障
-        }
-      } catch (e) {
-        lastErr = e;
-      }
-    }
-  } else {
-    // 咪咕 / 汽水等平台没有原生取链（完全交由洛雪音源），此处静默跳过，
-    // 不计入平台健康度，也不污染前端错误提示
-    lastErr = new Error(`${platform} 平台无原生取链（请通过自定义音源播放）`);
-    lastErr.soft = true;
+
+    markOk(platform);
+    const validated = {
+      ...result,
+      sourcePlatform: result.sourcePlatform || a.sourcePlatform,
+      validated: true,
+    };
+    if (check.format) validated.format = check.format;
+    if (check.bitRate) validated.probedBitRate = check.bitRate;
+    cacheSet(key, validated);
+    return validated;
   }
 
-  if (!result) {
-    // soft 失败（付费/无版权/未登录）属曲目属性，不计入平台健康度
-    if (!(lastErr && lastErr.soft)) markFail(platform, lastErr);
-    throw lastErr || new Error('取链失败');
-  }
-  markOk(platform);
-  cacheSet(key, result);
-  return result;
+  if (nativeNetworkErr) markFail(platform, nativeNetworkErr);
+  const finalErr = lastErr || new Error('取链失败');
+  if (finalErr.soft) negativeSet(key, finalErr.message);
+  throw finalErr;
 }
 
 function getHealth() {
@@ -425,6 +431,7 @@ function getHealth() {
 
 function clearCache() {
   cache.clear();
+  negative.clear();
 }
 
 /** 当前取链缓存条目数（设置页展示「内存缓存」用） */
@@ -435,10 +442,22 @@ function cacheSize() {
 module.exports = {
   resolvePlatformUrl,
   fallbackToKugou,
-  kugouBestEffort,
+  kugouBestEffort: kugou.bestEffort,
   getHealth,
   clearCache,
   cacheSize,
   setAuthPath,
-  __test: { similarity, normName, kugouByHash },
+  __test: {
+    similarity,
+    normName,
+    kugouByHash: kugou.kugouByHash,
+    cacheKey,
+    mergeTracks,
+    sameSong,
+    variantTag,
+    validateProbe,
+    parseContentRange,
+    mp3Probe,
+    PLACEHOLDER_BYTES,
+  },
 };

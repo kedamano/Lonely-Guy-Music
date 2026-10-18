@@ -167,7 +167,10 @@ const ZH_TW = {
   // 多平台搜索
   网易云音乐: '網易雲音樂', 酷狗音乐: '酷狗音樂', 搜索平台: '搜尋平台',
   'QQ 音乐': 'QQ 音樂', 网易云: '網易雲', 酷狗: '酷狗',
-  '多平台搜索：网易云 / QQ 音乐 / 酷狗，输入即搜，回车立即执行。': '多平台搜尋：網易雲 / QQ 音樂 / 酷狗，輸入即搜，Enter 立即執行。',
+  聚合: '聚合', 酷我: '酷我', 咪咕: '咪咕', 汽水: '汽水',
+  '换源播放 / 其他版本': '換源播放 / 其他版本',
+  '多平台搜索：聚合 / 网易云 / QQ 音乐 / 酷狗 / 酷我 / 咪咕 / 汽水。聚合会把各平台同一首歌合并为一行，播放失败自动换源；汽水需先导入支持其搜索的洛雪音源。':
+    '多平台搜尋：聚合 / 網易雲 / QQ 音樂 / 酷狗 / 酷我 / 咪咕 / 汽水。聚合會把各平台同一首歌合併為一行，播放失敗自動換源；汽水需先匯入支援其搜尋的洛雪音源。',
   播放队列是空的: '播放佇列是空的',
   '在曲目行悬停点击＋，或播放任意歌单来填充队列。': '在曲目列游標懸停點擊＋，或播放任意歌單來填充佇列。',
   队列已清空: '佇列已清空',
@@ -485,7 +488,10 @@ const EN = {
   // 多平台搜索
   网易云音乐: 'NetEase', 酷狗音乐: 'Kugou', 搜索平台: 'Search platform',
   'QQ 音乐': 'QQ Music', 网易云: 'NetEase', 酷狗: 'Kugou',
-  '多平台搜索：网易云 / QQ 音乐 / 酷狗，输入即搜，回车立即执行。': 'Multi-platform search: NetEase / QQ Music / Kugou — type to search, Enter to run.',
+  聚合: 'All', 酷我: 'Kuwo', 咪咕: 'Migu', 汽水: 'Qishui',
+  '换源播放 / 其他版本': 'Switch source / other versions',
+  '多平台搜索：聚合 / 网易云 / QQ 音乐 / 酷狗 / 酷我 / 咪咕 / 汽水。聚合会把各平台同一首歌合并为一行，播放失败自动换源；汽水需先导入支持其搜索的洛雪音源。':
+    'Multi-platform search: All / NetEase / QQ Music / Kugou / Kuwo / Migu / Qishui. “All” merges the same song across platforms into one row and falls back automatically; Qishui needs an imported LX source.',
   播放队列是空的: 'The queue is empty',
   '在曲目行悬停点击＋，或播放任意歌单来填充队列。': 'Hover a track and hit ＋, or play any playlist to fill the queue.',
   队列已清空: 'Queue cleared',
@@ -669,6 +675,41 @@ const PATTERNS = [
   {
     re: /^找到 <b>(\d+)<\/b> 首与「(.+)」相关的歌曲$/,
     make: (m, d) => ({ 'zh-TW': `找到 <b>${m[1]}</b> 首與「${m[2]}」相關的歌曲`, en: `Found <b>${m[1]}</b> songs for “${m[2]}”` }[lang] || m[0]),
+  },
+  {
+    re: /^聚合 · 找到 <b>(\d+)<\/b> 首 · (\d+) 个来源$/,
+    make: (m) => ({
+      'zh-TW': `聚合 · 找到 <b>${m[1]}</b> 首 · ${m[2]} 個來源`,
+      en: `All platforms · <b>${m[1]}</b> songs · ${m[2]} sources`,
+    }[lang] || m[0]),
+  },
+  {
+    re: /^(\d+) 个来源$/,
+    make: (m) => ({ 'zh-TW': `${m[1]} 個來源`, en: `${m[1]} sources` }[lang] || m[0]),
+  },
+  {
+    re: /^部分平台失败：(.+)$/,
+    make: (m) => ({ 'zh-TW': `部分平臺失敗：${m[1]}`, en: `Some platforms failed: ${m[1]}` }[lang] || m[0]),
+  },
+  {
+    re: /^实际播放：(.+)$/,
+    make: (m) => ({ 'zh-TW': `實際播放：${m[1]}`, en: `Now playing from: ${m[1]}` }[lang] || m[0]),
+  },
+  {
+    re: /^已切换到 (.+) 音源$/,
+    make: (m) => ({ 'zh-TW': `已切換到 ${m[1]} 音源`, en: `Switched to ${m[1]}` }[lang] || m[0]),
+  },
+  {
+    re: /^正在查找其他平台的同一首歌…$/,
+    make: () => ({ 'zh-TW': '正在尋找其他平臺的同一首歌…', en: 'Looking for the same song on other platforms…' }[lang] || '正在查找其他平台的同一首歌…'),
+  },
+  {
+    re: /^没有找到其他平台的同一首歌$/,
+    make: () => ({ 'zh-TW': '沒有找到其他平臺的同一首歌', en: 'No other-platform version found' }[lang] || '没有找到其他平台的同一首歌'),
+  },
+  {
+    re: /^查找失败：(.+)$/,
+    make: (m) => ({ 'zh-TW': `尋找失敗：${m[1]}`, en: `Lookup failed: ${m[1]}` }[lang] || m[0]),
   },
   {
     re: /^找到 <b>(\d+)<\/b> 个与「(.+)」相关的歌单$/,

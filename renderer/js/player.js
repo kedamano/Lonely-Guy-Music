@@ -264,14 +264,22 @@ export class Player {
         try {
           const res = await api.resolveMusicUrl(platform, track.musicInfo, q);
           if (token !== this._token) return null;
-          if (res && res.url) return '/api/proxy?url=' + encodeURIComponent(res.url);
+          if (res && res.url) {
+            const info = {
+              from: 'source', sourcePlatform: platform, matched: null,
+              bitRate: 0, sourceId: res.sourceId || '',
+            };
+            this._resolveMeta = info;
+            if (!opts.quiet) { this.lastResolve = info; this.emit('resolved', info); }
+            return '/api/proxy?url=' + encodeURIComponent(res.url);
+          }
           errors.push('音源未返回链接');
         } catch (e) {
           errors.push('音源：' + e.message);
         }
       }
 
-      // 2) 平台原生取链：酷狗匿名直链；QQ 有登录态则直连，否则跨平台兜底到酷狗同曲
+      // 2) 平台原生取链：酷狗匿名直链；QQ 有登录态则直连，否则跨平台兜底
       try {
         const r = await api.platformUrl({
           platform,
@@ -280,11 +288,20 @@ export class Player {
           artist: track.artist,
           duration: track.duration,
           quality: q,
+          // 聚合行的其他平台来源：当前平台取链失败时逐个尝试
+          alternatives: Array.isArray(track.sources) ? track.sources : [],
         });
         if (token !== this._token) return null;
         if (r && r.url) {
+          const info = {
+            from: r.from,
+            sourcePlatform: r.sourcePlatform || platform,
+            matched: r.matched || null,
+            bitRate: r.bitRate || 0,
+          };
+          this._resolveMeta = info;
           // 预取时不写 lastResolve、不弹「已换源」提示：用户还没播到那首
-          if (!opts.quiet) this.lastResolve = { from: r.from, matched: r.matched || null, bitRate: r.bitRate || 0 };
+          if (!opts.quiet) { this.lastResolve = info; this.emit('resolved', info); }
           if (!opts.quiet && r.matched && r.from !== 'kugou-native') {
             // 换了来源或版本必须告知：用户点的是原曲，实际播的可能是别的收录版本
             const prefix = r.from === 'kugou-fallback'
@@ -337,6 +354,9 @@ export class Player {
     if (token !== this._token) return null;
     const raw = r.data && r.data[0] && r.data[0].url;
     if (!raw) throw new Error('音源与官方接口均无可用地址（可能无版权或已下架）');
+    const info = { from: 'wy-native', sourcePlatform: 'wy', matched: null, bitRate: 0 };
+    this._resolveMeta = info;
+    if (!opts.quiet) { this.lastResolve = info; this.emit('resolved', info); }
     return '/api/proxy?url=' + encodeURIComponent(raw); // 同源代理 → Web Audio 可用
   }
 
@@ -412,6 +432,9 @@ export class Player {
     if (pref && pref.key === trackKey(track) && Date.now() - pref.at < 20 * 60 * 1000) {
       url = pref.url;
       this._pref = null;
+      // 预取阶段的取链信息随地址一起带过来，播放条才能显示实际来源
+      this.lastResolve = pref.resolve || null;
+      if (pref.resolve) this.emit('resolved', pref.resolve);
       this.emit('prefetch', { hit: true, key: pref.key });
     } else {
       this._pref = null;
@@ -496,7 +519,7 @@ export class Player {
     try {
       const url = await this._resolveUrl(t, token, { quiet: true });
       if (!url || token !== this._token || abort.signal.aborted) return;
-      this._pref = { key, url, at: Date.now() };
+      this._pref = { key, url, at: Date.now(), resolve: this._resolveMeta || null };
       const res = await fetch(url, { headers: { Range: 'bytes=0-1572863' }, signal: abort.signal });
       if (res.ok || res.status === 206) {
         // 把 1.5MB 读干净再丢：既确认这条链接真的可播，也让连接与首包落到本地

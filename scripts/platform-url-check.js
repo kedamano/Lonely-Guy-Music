@@ -44,6 +44,28 @@ function check(name, ok, detail = '') {
   check('不同歌名直接淘汰', wrongSong === -1, String(wrongSong));
   check('同名但时长差极大被降权', wayOffLen < coverSameLen, `${wayOffLen} < ${coverSameLen}`);
 
+  /* ---------- 2b. 取链缓存键与探测（纯函数） ---------- */
+  const { cacheKey, validateProbe, parseContentRange, PLACEHOLDER_BYTES } = purl.__test;
+  const k128 = cacheKey({ platform: 'tx', musicInfo: { songmid: 'm1' }, quality: '128' });
+  const k320 = cacheKey({ platform: 'tx', musicInfo: { songmid: 'm1' }, quality: '320' });
+  check('取链缓存键包含音质', k128 !== k320 && /:128$/.test(k128) && /:320$/.test(k320), `${k128} / ${k320}`);
+  check('Content-Range 解析', JSON.stringify(parseContentRange('bytes 0-1/999')) === JSON.stringify({ start: 0, end: 1, total: 999 }));
+  const placeholder = validateProbe({
+    statusCode: 200,
+    headers: { 'content-type': 'audio/mpeg', 'content-range': `bytes 0-65535/${PLACEHOLDER_BYTES}` },
+    buffer: Buffer.from([0xff, 0xfb, 0x90, 0x64]),
+    expectedDurationMs: 240000,
+  });
+  check('拒绝酷我试听占位文件', placeholder.ok === false && /占位/.test(placeholder.reason), placeholder.reason);
+  const normal = validateProbe({
+    statusCode: 206,
+    headers: { 'content-type': 'audio/mpeg', 'content-range': 'bytes 0-65535/5400000' },
+    buffer: Buffer.from([0xff, 0xfb, 0x90, 0x64]),
+    expectedDurationMs: 180000,
+  });
+  check('正常音频探测放行', normal.ok === true && normal.totalBytes === 5400000, JSON.stringify(normal));
+  check('取链模块导出合并函数', typeof purl.__test.mergeTracks === 'function' && typeof purl.__test.sameSong === 'function');
+
   /* ---------- 3. 酷狗取链（联网） ---------- */
   if (OFFLINE) {
     console.log('\n（--offline：跳过联网取链）');
@@ -97,7 +119,7 @@ function check(name, ok, detail = '') {
           duration: t.duration,
           quality: '320',
         });
-        check('QQ 无登录态时走跨平台兜底', got.from === 'kugou-fallback', got.from);
+        check('QQ 无登录态时走跨平台兜底', /^(kuwo|kugou|wy)-fallback$/.test(got.from), got.from);
         check('兜底结果带匹配信息', !!(got.matched && got.matched.name), got.matched ? `${got.matched.name} · ${got.matched.artist}` : '无');
       } else {
         check('QQ 搜索可返回结果', false, '空列表');

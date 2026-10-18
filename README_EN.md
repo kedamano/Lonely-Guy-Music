@@ -8,9 +8,9 @@
 
 NetEase online library · LX Music custom sources · Live spectrum · Karaoke lyrics · 10-band EQ · Desktop lyrics · Local music
 
-[![Version](https://img.shields.io/badge/version-1.2.5-ff6a2c?style=flat-square)](https://github.com/kedamano/Lonely-Guy-Music/releases)
+[![Version](https://img.shields.io/badge/version-1.3.0-ff6a2c?style=flat-square)](https://github.com/kedamano/Lonely-Guy-Music/releases)
 [![Electron](https://img.shields.io/badge/Electron-44-47848F?style=flat-square&logo=electron&logoColor=white)](https://www.electronjs.org/)
-[![Tests](https://img.shields.io/badge/tests-215%20checks-passing-3fb950?style=flat-square)](#-ui-regression-tests)
+[![Tests](https://img.shields.io/badge/tests-279%20checks-passing-3fb950?style=flat-square)](#-ui-regression-tests)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-8957e5?style=flat-square)](https://github.com/kedamano/Lonely-Guy-Music/releases)
 [![License](https://img.shields.io/badge/license-MIT-c9d1d9?style=flat-square)](LICENSE)
 
@@ -43,6 +43,7 @@ Guman Music aims to do both well —
 | Feature | Description |
 |---|---|
 | Discover / Explore / Search | Playlist walls, category browsing, type-to-search (300ms debounce) + Enter, keywords preserved across tabs |
+| **Multi-platform search** | Switch between **Aggregate / NetEase / QQ Music / Kugou / Kuwo / Migu / Qishui**; aggregate search merges the same song into one row with source badges and "N sources", auto-switches source when playback fails — **QQ / Kugou / Kuwo search and play without any source script; Migu searches natively and resolves via cross-platform fallback** |
 | Playlist detail | Play all / shuffle / queue the whole playlist |
 | Playback controls | Play/pause/prev/next, list·single·sequential loop, draggable progress & volume |
 | Play queue | Drawer management: add, remove, jump; insert at top or bottom |
@@ -162,6 +163,7 @@ flowchart LR
         API["/api/* NetEase reverse proxy"]
         PROXY["/api/proxy<br/>same-origin audio/cover proxy"]
         SOURCES["source-manager.js<br/>LX source runtime (vm sandbox)"]
+        PLAT["platform-aggregate / platform-url<br/>multi-platform search & resolution"]
     end
 
     NCM["NeteaseCloudMusicApi<br/>child process (dynamic port)"]
@@ -189,7 +191,15 @@ main-log.js           Log persistence & rotation (userData/logs/guman.log, 2MB)
 server/
   index.js            Host server: UI + /api reverse proxy or offline mock + source API + audio proxy
   mock.js             Offline demo data (NetEase-compatible response shapes)
-  source-manager.js   LX source runtime: vm sandbox, lx API, URL/lyric/cover resolution
+  source-manager.js   LX source runtime: vm sandbox, lx API, parallel resolution & timeouts
+  song-utils.js       Text normalization (NFKC/Traditional→Simplified), scoring, dedupe & cross-platform merge (pure)
+  loose-json.js       Fault-tolerant Kuwo pseudo-JSON parser (no eval)
+  audio-probe.js      Range-probes audio headers to reject preview placeholders/error pages/bad bitrates (pure)
+  ncm-client.js       Local NeteaseCloudMusicApi wrapper (cross-source fallback; cookies never logged)
+  platform-search.js  Single-platform search facade: shared post-processing + 5-min cache (QQ/Kugou/Kuwo/Migu)
+  platform-aggregate.js Aggregate search: concurrent recall, merge into one row, alternatives, cache
+  platform-url.js     Resolution orchestration: native + aggregate alternatives + NetEase/Kuwo/Kugou fallback + probe/cache
+  platforms/          Platform adapters: qq / kugou / kuwo / migu + metadata registry
   account.js          Account features
   library.js          Local library
   translate.js        Lyric translation
@@ -224,10 +234,10 @@ scripts/
 
 Fully compatible with [LX Music custom source scripts](https://lxmusic.toside.cn/desktop/custom-source) (`globalThis.lx` event model: `inited` / `request` / `updateAlert`):
 
-- **Sandboxed execution**: scripts run in a Node `vm` sandbox with `lx.request` (full HTTP: headers/body/form/formData/timeout/redirects) and `lx.utils` (buffer/crypto/zlib);
+- **Sandboxed execution**: scripts run in a Node `vm` sandbox with `lx.request` (full HTTP: headers/body/form/formData/timeout/redirects/byte cap) and `lx.utils` (buffer/crypto/zlib); loopback and private-network literal targets are rejected by default (best-effort SSRF guard, `allowPrivateHost` can opt in). Note that `vm` is **not a security boundary** — only run trusted source scripts;
 - **All platforms**: Kuwo(kw) / Kugou(kg) / QQ(tx) / NetEase(wy) / Migu(mg) / Qishui(qs);
 - **Quality fallback**: FLAC 24bit / FLAC / 320K / 192K / 128K with automatic downward fallback;
-- **Multi-source fault tolerance**: sources are tried in order; failures are skipped; only when all fail does it fall back to the official NetEase endpoint — with a per-source failure summary in the toast;
+- **Multi-source fault tolerance**: enabled sources are resolved **in parallel** (8s per-source timeout) and the first success wins; when all fail, the toast summarizes every source's failure in registration order;
 - **Source management**: Settings → Custom Sources: import local `.js`, install from URL, enable/disable, delete;
 - **Explicit proxy control**: source requests are **direct by default and never read system proxy env vars** (a broken local proxy can't break every source); set one in Settings → Network Proxy when needed, effective immediately.
 
@@ -244,6 +254,12 @@ Fully compatible with [LX Music custom source scripts](https://lxmusic.toside.cn
 | `POST /api/sources/proxy` | Set network proxy `{ proxy }`, empty = direct |
 | `POST /api/sources/resolve` | Resolve play URL `{ sourcePlatform, musicInfo, quality?, sourceId? }` |
 | `POST /api/sources/action` | Generic action `{ action: 'musicUrl'/'lyric'/'pic', ... }` |
+| `GET /api/platform/list` | Platform list (with `available` / `reason` / `playback`) |
+| `GET /api/platform/search` | Single-platform search `{ platform, keywords, page, limit }` |
+| `GET /api/platform/search-all` | Aggregate search `{ keywords, page, limit, sources? }` — merged rows + `sources[]` |
+| `POST /api/platform/alternatives` | Alternative sources `{ platform, name, artist, duration }` for "switch source" |
+| `POST /api/platform/url` | Platform resolution `{ platform, musicInfo, name, artist, duration, quality, alternatives? }` |
+| `GET /api/cache/stats` · `POST /api/cache/clear` | Cache stats / one-click clear (covers, URLs, search, aggregate) |
 
 </details>
 
@@ -251,17 +267,18 @@ Fully compatible with [LX Music custom source scripts](https://lxmusic.toside.cn
 
 ## 🔗 Multi-Platform Track Resolution
 
-QQ / Kugou tracks never touch the NetEase API, and they do not hard-depend on source scripts either — resolution degrades through three layers:
+QQ / Kugou / Kuwo / Migu tracks do not hard-depend on the NetEase API or on source scripts — resolution degrades through four layers:
 
 | Order | Layer | Notes |
 |---|---|---|
-| 1 | LX source script | Used first when the user has one enabled; can deliver FLAC / 320K |
-| 2 | Platform native | Kugou's mobile `playInfo` endpoint returns a full direct link anonymously (no login, no signature) |
-| 3 | Cross-platform fallback | QQ's `vkey` is bound to `uin`, so anonymous requests return nothing — search Kugou by title / artist / duration and play the same track |
+| 1 | LX source script | Used first when an enabled source supports that platform; can deliver FLAC / 320K |
+| 2 | Platform native | Kugou mobile `playInfo` and Kuwo `anti.s` return full direct links anonymously; QQ uses the official `vkey` once login state is configured; NetEase goes through local NCM |
+| 3 | Aggregate alternatives | Rows from aggregate search carry `sources[]`; if the current platform fails, other platforms' copies of the same song are tried by relevance (each is validated) |
+| 4 | Cross-platform fallback | Search NetEase → Kuwo → Kugou by title + artist + duration and play the same track |
 
-When a fallback or an alternate recording is used, the UI says so explicitly; tracks are never swapped silently.
+Every platform-resolution candidate is first probed with `Range: bytes=0-65535`: HTML/JSON error pages, Kuwo's 181521-byte preview placeholder, tiny files, abnormal bitrates and duration-mismatched clips are rejected; **only validated results are cached** (the cache key includes quality, and failures get a 60s negative cache). When a fallback or an alternate recording is used, the playbar and toast state the actual source explicitly; tracks are never swapped silently.
 
-**Why QQ can't be reverse-proxied like NetEase**: NetEase's URL endpoint hands out 128K even when anonymous, and returns a stateless, server-signed CDN link. QQ's `vkey` is bound to `uin + guid`, and anonymous calls return an empty `purl` (observed `104003` / `1000`) — a login state is mandatory. Kugou's `play/songinfo` requires a `signature` whose salt changes with each web release, but its mobile `playInfo` endpoint works anonymously. That asymmetry is why native resolution is enabled only for Kugou by default.
+**Why QQ can't be reverse-proxied like NetEase**: NetEase's URL endpoint hands out 128K even when anonymous, and returns a stateless, server-signed CDN link. QQ's `vkey` is bound to `uin + guid`, and anonymous calls return an empty `purl` (observed `104003` / `1000`) — a login state is mandatory. Kugou's `play/songinfo` requires a `signature` whose salt changes with each web release, but its mobile `playInfo` endpoint works anonymously; Kuwo's `antiserver` is anonymous too — which is why native resolution is enabled for Kugou and Kuwo.
 
 **Known limitations**:
 
@@ -272,7 +289,7 @@ When a fallback or an alternate recording is used, the UI says so explicitly; tr
 
 ## 🧪 UI Regression Tests
 
-Playwright-based real-interaction regression (**215 assertions** total):
+Playwright-based real-interaction regression (**279 assertions** total):
 
 ```bash
 npm start                        # or ENABLE_NCM=0 node server/index.js
@@ -280,9 +297,10 @@ node scripts/ui-check.js         # 65 interaction checks + screenshots
 node scripts/ui-smoke.js         # 73 full smoke checks (covers/pagination/settings/i18n/cache/prefetch…)
 node scripts/proxy-check.js      # 12 proxy mechanism unit tests
 node scripts/search-guide-check.js # 19 search-guide & i18n checks
-node scripts/platform-url-check.js # 14 platform resolution (scoring + Kugou link + QQ fallback)
+node scripts/platform-search-check.js --offline # 51 aggregate-search/resolution checks (normalization/merge/probe/SSRF)
+node scripts/platform-url-check.js # 19 platform resolution (scoring + Kugou link + four-layer fallback)
 node scripts/version-check.js     # 5 version-string contract checks
-node scripts/source-search-check.js # 15 Migu/Qishui search-source checks (LX-source delegation + no-source error)
+node scripts/source-search-check.js # 23 LX-source search checks (parallel fallback + capabilities + Qishui)
 npx electron scripts/tray-check.js # 5 tray icon checks (ICO empty-image regression + real bounds)
 npx electron scripts/cache-check.js # 7 disk-cache checks (write → measure → clear → idempotent)
 node scripts/cache-e2e.js         # 7 on-device storage checks (needs a GUI, full IPC path)
@@ -294,12 +312,12 @@ Covers: live search / tab switching / playback / seek dragging / favorites / que
 
 ## 🗺 Roadmap
 
-- [x] **Multi-platform search**: NetEase / QQ Music / Kugou, queried directly per platform
+- [x] **Multi-platform search**: Aggregate / NetEase / QQ Music / Kugou / Kuwo / Migu queried directly, Qishui via LX sources; cross-platform merge, source badges, one-click source switching
 - [x] **Cloud playlist sync / account login**: QR code + phone captcha + email password; cloud playlists play directly
 - [x] **macOS / Linux installers**: dmg / zip / AppImage / deb, built by a three-platform GitHub Actions matrix
 - [x] **Audio chain extensions**: spatial audio (M/S widening + convolution reverb + compression) and 5 scene presets
 - [x] **Auto-update loop**: `electron-updater` against the GitHub Releases feed — new versions prompt on launch
-- [x] Migu / Qishui search sources (search & resolution both go through the LX Music source; import an LX source that supports their search first)
+- [x] Native Migu search; Qishui search requires an imported LX source that supports it
 - [ ] Two-way playlist editing (add/remove cloud playlists in-app)
 
 ---

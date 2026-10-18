@@ -20,7 +20,9 @@ const account = require('./account');
 const library = require('./library');
 const translate = require('./translate');
 const platformSearch = require('./platform-search');
+const platformAggregate = require('./platform-aggregate');
 const platformUrl = require('./platform-url');
+const ncmClient = require('./ncm-client');
 
 // 监听地址：仅本机回环。/api 会注入登录 cookie，绑 0.0.0.0 会把它暴露给整个局域网。
 const HOST_BIND = process.env.HOST_BIND || '127.0.0.1';
@@ -97,6 +99,7 @@ app.post('/api/sources/load', async (req, res) => {
   try {
     const { url, path: filePath, code } = req.body || {};
     const result = await sourceManager.addSource({ url, filePath, code });
+    platformAggregate.clearCache();
     res.json({ code: 0, data: result });
   } catch (e) {
     res.status(400).json({ code: 400, msg: e.message });
@@ -107,6 +110,7 @@ app.post('/api/sources/toggle', async (req, res) => {
   try {
     const { id, enabled } = req.body || {};
     const result = sourceManager.setSourceEnabled(id, enabled);
+    platformAggregate.clearCache();
     res.json({ code: 0, data: result });
   } catch (e) {
     res.status(400).json({ code: 400, msg: e.message });
@@ -117,6 +121,7 @@ app.post('/api/sources/remove', async (req, res) => {
   try {
     const { id } = req.body || {};
     const result = sourceManager.removeSource(id);
+    platformAggregate.clearCache();
     res.json({ code: 0, data: result });
   } catch (e) {
     res.status(400).json({ code: 400, msg: e.message });
@@ -180,13 +185,62 @@ app.get('/api/platform/search', async (req, res) => {
   }
 });
 
+// 聚合搜索：多个平台并发召回，合并为一首一行（主来源 + sources[] 备选）
+app.get('/api/platform/search-all', async (req, res) => {
+  const { keywords, page, limit, sources } = req.query;
+  const limitNum = Math.min(60, Math.max(1, Number(limit) || 30));
+  let keys;
+  if (sources) {
+    keys = String(sources).split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+    const unknown = keys.filter((k) => !Object.prototype.hasOwnProperty.call(platformSearch.PLATFORMS, k));
+    if (unknown.length) {
+      return res.status(400).json({ code: 400, msg: `不支持的平台：${unknown.join(',')}` });
+    }
+  }
+  try {
+    const data = await platformAggregate.searchAll({
+      keyword: keywords, page, limit: limitNum, sources: keys,
+    });
+    res.json({ code: 0, data, online });
+  } catch (e) {
+    res.status(502).json({ code: 502, msg: e.message || '聚合搜索失败' });
+  }
+});
+
+// 备选来源：为当前曲目找其他平台的同曲，供“换源播放”使用
+app.post('/api/platform/alternatives', async (req, res) => {
+  const { platform, name, artist, duration, sources, limit } = req.body || {};
+  if (!name) return res.status(400).json({ code: 400, msg: '缺少 name' });
+  let keys;
+  if (Array.isArray(sources) && sources.length) {
+    keys = sources.map((s) => String(s || '').toLowerCase()).filter(Boolean);
+    const unknown = keys.filter((k) => !Object.prototype.hasOwnProperty.call(platformSearch.PLATFORMS, k));
+    if (unknown.length) {
+      return res.status(400).json({ code: 400, msg: `不支持的平台：${unknown.join(',')}` });
+    }
+  }
+  try {
+    const data = await platformAggregate.findAlternatives({
+      platform,
+      name,
+      artist,
+      duration,
+      sources: keys,
+      limit: Math.min(20, Math.max(1, Number(limit) || 10)),
+    });
+    res.json({ code: 0, data, online });
+  } catch (e) {
+    res.status(502).json({ code: 502, msg: e.message || '获取备选来源失败' });
+  }
+});
+
 // 平台原生取链：不依赖洛雪音源，酷狗匿名可用；QQ 无登录态时跨平台兜底到酷狗
 app.post('/api/platform/url', async (req, res) => {
-  const { platform, musicInfo, name, artist, duration, quality } = req.body || {};
+  const { platform, musicInfo, name, artist, duration, quality, alternatives } = req.body || {};
   if (!platform) return res.status(400).json({ code: 400, msg: '缺少 platform' });
   try {
     const data = await platformUrl.resolvePlatformUrl({
-      platform, musicInfo, name, artist, duration, quality,
+      platform, musicInfo, name, artist, duration, quality, alternatives,
     });
     res.json({ code: 0, data, online });
   } catch (e) {
@@ -513,7 +567,13 @@ app.get('/api/proxy', async (req, res) => {
 app.get('/api/cache/stats', (_req, res) => {
   res.json({
     code: 0,
-    data: { images: imgCache.size, imageBytes: imgCacheBytes, urls: platformUrl.cacheSize() },
+    data: {
+      images: imgCache.size,
+      imageBytes: imgCacheBytes,
+      urls: platformUrl.cacheSize(),
+      searches: platformSearch.getSearchCacheStats(),
+      aggregate: platformAggregate.cacheStats(),
+    },
   });
 });
 
@@ -521,6 +581,8 @@ app.post('/api/cache/clear', (_req, res) => {
   imgCache.clear();
   imgCacheBytes = 0;
   platformUrl.clearCache();
+  platformSearch.clearSearchCache();
+  platformAggregate.clearCache();
   res.json({ code: 0, data: { ok: true } });
 });
 
@@ -582,6 +644,8 @@ function startNetease(port) {
         ncmPort = next;
         ncmUrl = `http://127.0.0.1:${ncmPort}`;
         account.init({ dataDir: DATA_DIR, ncmUrl });
+        ncmClient.setNcmBase(ncmUrl);
+        ncmClient.setNcmEnabled(ENABLE_NCM);
       }
       console.log(`[ncm] 尝试重启（第 ${ncmRestarts} 次，端口 ${ncmPort}）`);
       setTimeout(() => startNetease(ncmPort), 1500);
@@ -635,6 +699,8 @@ async function probe() {
       if (r.ok) {
         if (!online) console.log('[api] 在线模式：已连接到网易云 API');
         online = true;
+        ncmClient.setNcmBase(ncmUrl);
+        ncmClient.setNcmEnabled(true);
         // 上次登录过则补一次用户信息，UI 冷启动即可显示头像昵称
         account.refreshStatus().catch(() => {});
         return;
@@ -661,6 +727,10 @@ const ready = new Promise((resolve, reject) => {
       ncmUrl = `http://127.0.0.1:${ncmPort}`;
       // 账号与本地曲库都落在 userData（Electron 主进程通过 GUMAN_USER_DATA 传入）
       account.init({ dataDir: DATA_DIR, ncmUrl });
+      // 跨源兜底链通过 ncm-client 访问网易云；账号 cookie 只走请求头
+      ncmClient.setNcmBase(ncmUrl);
+      ncmClient.setNcmEnabled(ENABLE_NCM);
+      ncmClient.setCookieProvider(account.getCookie);
       library.init(DATA_DIR);
       translate.init(DATA_DIR);
       // 先初始化音源系统（读取已保存的音源脚本并执行）

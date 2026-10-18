@@ -29,13 +29,22 @@ jobs:
 
       - name: 语法检查（主进程/渲染层/脚本）
         run: |
-          for f in main.js main-log.js preload.js assets/icon.js server/*.js renderer/js/*.js scripts/*.js; do
+          for f in main.js main-log.js preload.js assets/icon.js server/*.js server/platforms/*.js renderer/js/*.js scripts/*.js; do
             node --check "$f" || { echo "语法错误: $f"; exit 1; }
           done
           echo "语法检查通过"
 
       - name: 代理机制单元测试
         run: node scripts/proxy-check.js
+
+      - name: 多平台搜索离线回归
+        run: node scripts/platform-search-check.js --offline
+
+      - name: 平台取链离线回归
+        run: node scripts/platform-url-check.js --offline
+
+      - name: 音源搜索接入回归
+        run: node scripts/source-search-check.js
 
       - name: 生成字体资源
         run: npm run fonts

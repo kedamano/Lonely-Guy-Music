@@ -8,9 +8,9 @@
 
 在线网易云曲库 · 洛雪自定义音源 · 实时频谱 · 卡拉OK歌词 · 10 段均衡器 · 桌面歌词 · 本地音乐
 
-[![Version](https://img.shields.io/badge/version-1.2.5-ff6a2c?style=flat-square)](https://github.com/kedamano/Lonely-Guy-Music/releases)
+[![Version](https://img.shields.io/badge/version-1.3.0-ff6a2c?style=flat-square)](https://github.com/kedamano/Lonely-Guy-Music/releases)
 [![Electron](https://img.shields.io/badge/Electron-44-47848F?style=flat-square&logo=electron&logoColor=white)](https://www.electronjs.org/)
-[![Tests](https://img.shields.io/badge/tests-215%20checks-passing-3fb950?style=flat-square)](#-ui-回归测试)
+[![Tests](https://img.shields.io/badge/tests-279%20checks-passing-3fb950?style=flat-square)](#-ui-回归测试)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-8957e5?style=flat-square)](https://github.com/kedamano/Lonely-Guy-Music/releases)
 [![License](https://img.shields.io/badge/license-MIT-c9d1d9?style=flat-square)](LICENSE)
 [![i18n](https://img.shields.io/badge/语言-简体%20%7C%20繁體%20%7C%20EN-ff6a2c?style=flat-square)](#-界面语言)
@@ -62,7 +62,7 @@
 | 功能 | 说明 |
 |---|---|
 | 发现 / 音乐馆 / 搜索 | 精选歌单墙、分类浏览、输入即搜（300ms 防抖）+ 回车执行，切页保留关键词与结果 |
-| **多平台搜索** | 一键切换 **网易云 / QQ 音乐 / 酷狗**，直接按平台检索，跳出网易云元数据；酷狗走匿名原生直链、QQ 自动兜底到酷狗同曲，**不配音源也能播** |
+| **多平台搜索** | 一键切换 **聚合 / 网易云 / QQ 音乐 / 酷狗 / 酷我 / 咪咕 / 汽水**，直接按平台检索；聚合搜索把同一首歌合并为一行，标注来源徽标与「N 个来源」，播放失败自动换源；**QQ / 酷狗 / 酷我不配音源也能搜能播，咪咕可原生搜索、播放走跨平台同曲兜底** |
 | 歌单详情 | 一键播放全部 / 随机播放 / 整单加入队列 |
 | 播放控制 | 播放/暂停/上一首/下一首、列表·单曲·顺序三种循环、拖拽进度与音量 |
 | 播放队列 | 抽屉式管理，可增删、跳播，插入位置可选顶部/底部 |
@@ -191,6 +191,7 @@ flowchart LR
         API["/api/* 反代网易云"]
         PROXY["/api/proxy<br/>同源音频/封面代理"]
         SOURCES["source-manager.js<br/>洛雪音源运行时（vm 沙箱）"]
+        PLAT["platform-aggregate / platform-url<br/>多平台聚合搜索与取链编排"]
     end
 
     NCM["NeteaseCloudMusicApi<br/>子进程（动态端口）"]
@@ -218,9 +219,15 @@ main-log.js           日志落盘与轮转（userData/logs/guman.log，2MB 轮�
 server/
   index.js            主机后端：托管 UI + /api 反代或离线 mock + 音源 API + 同源音频代理
   mock.js             离线示例数据（与网易云响应结构一致）
-  source-manager.js   洛雪音源运行时：vm 沙箱执行音源脚本、lx API 实现、URL/歌词/封面解析
-  platform-search.js  多平台搜索：QQ 音乐（vkeys）/ 酷狗（官方搜索接口）适配与统一曲目结构
-  platform-url.js     平台原生取链：酷狗匿名直链 + QQ 跨平台兜底 + 结果缓存
+  source-manager.js   洛雪音源运行时：vm 沙箱执行音源脚本、lx API 实现、并行解析与超时
+  song-utils.js       文本归一化（NFKC/繁简）、相关性排序、去重与跨平台合并（纯函数）
+  loose-json.js       酷我伪 JSON 容错解析（禁用 eval）
+  audio-probe.js      Range 探测音频头，识别试听占位/错误页/异常码率（纯函数可测）
+  ncm-client.js       本地 NeteaseCloudMusicApi 封装（跨源兜底用，Cookie 不落日志）
+  platform-search.js  单平台搜索门面：统一后处理 + 5 分钟缓存（QQ/酷狗/酷我/咪咕）
+  platform-aggregate.js 聚合搜索：多平台并发召回、合并为一首、备选来源、聚合缓存
+  platform-url.js     取链编排：原生直链 + 聚合备选 + 网易云/酷我/酷狗兜底 + 校验与缓存
+  platforms/          平台适配器：qq / kugou / kuwo / migu + 元数据注册表
   account.js          账号能力
   library.js          本地曲库
   translate.js        歌词翻译
@@ -255,10 +262,10 @@ scripts/
 
 完整兼容 [LX Music 自定义源脚本](https://lxmusic.toside.cn/desktop/custom-source)（`globalThis.lx` 事件模型：`inited` / `request` / `updateAlert`）：
 
-- **沙箱执行**：音源脚本运行在 Node `vm` 沙箱，提供 `lx.request`（HTTP 全功能：headers/body/form/formData/timeout/重定向）与 `lx.utils`（buffer/crypto/zlib）；
+- **沙箱执行**：音源脚本运行在 Node `vm` 沙箱，提供 `lx.request`（HTTP 全功能：headers/body/form/formData/timeout/重定向/字节上限）与 `lx.utils`（buffer/crypto/zlib）；默认拒绝访问本机与私网地址（SSRF 尽力防护，可用 `allowPrivateHost` 显式放行）。注意 `vm` **不是安全边界**，只执行可信来源的脚本；
 - **全平台支持**：酷我(kw) / 酷狗(kg) / QQ(tx) / 网易(wy) / 咪咕(mg) / 汽水(qs)；
 - **音质回退**：默认音质可选 FLAC 24bit / FLAC / 320K / 192K / 128K，取不到自动向下回退；
-- **多源容错**：按启用顺序逐个尝试取链，失败自动跳到下一个；全部失败才降级网易云官方接口，并在 toast 中汇总每个音源的失败原因；
+- **多源容错**：多个音源**并发**解析（单源 8 秒超时），取首个成功结果；全部失败时在 toast 中按注册顺序汇总每个音源的失败原因；
 - **来源管理**：设置 → 自定义源管理，支持导入本地 `.js` / 从 URL 安装 / 启用禁用 / 删除；
 - **网络代理可控**：音源请求**默认直连，不读取系统代理环境变量**（避免本机失效代理拖垮全部音源）；需要时在「设置 → 网络代理」填写，保存即生效。
 
@@ -275,6 +282,12 @@ scripts/
 | `POST /api/sources/proxy` | 设置网络代理 `{ proxy }`，留空 = 恢复直连 |
 | `POST /api/sources/resolve` | 取播放链 `{ sourcePlatform, musicInfo, quality?, sourceId? }` |
 | `POST /api/sources/action` | 通用动作 `{ action: 'musicUrl'/'lyric'/'pic', ... }` |
+| `GET /api/platform/list` | 平台清单（含 `available` / `reason` / `playback`） |
+| `GET /api/platform/search` | 单平台搜索 `{ platform, keywords, page, limit }` |
+| `GET /api/platform/search-all` | 聚合搜索 `{ keywords, page, limit, sources? }`，返回合并行 + `sources[]` |
+| `POST /api/platform/alternatives` | 备选来源 `{ platform, name, artist, duration }`，供「换源播放」 |
+| `POST /api/platform/url` | 平台取链 `{ platform, musicInfo, name, artist, duration, quality, alternatives? }` |
+| `GET /api/cache/stats` · `POST /api/cache/clear` | 缓存统计 / 一键清理（封面、取链、单平台搜索、聚合搜索） |
 
 </details>
 
@@ -282,17 +295,18 @@ scripts/
 
 ## 🔗 多平台取链策略
 
-QQ / 酷狗曲目的播放地址不走网易云，也不强依赖音源脚本，而是三层降级：
+QQ / 酷狗 / 酷我 / 咪咕曲目的播放地址不强依赖网易云，也不强依赖音源脚本，而是四级降级：
 
 | 顺序 | 环节 | 说明 |
 |---|---|---|
-| 1 | 洛雪音源 | 用户启用了音源时优先，能给出 FLAC / 320K |
-| 2 | 平台原生 | 酷狗移动端 `playInfo` 接口匿名即可取到完整直链（无需登录、无需签名） |
-| 3 | 跨平台兜底 | QQ 的 `vkey` 与 `uin` 绑定、匿名拿不到，改用「歌名 + 歌手 + 时长」到酷狗检索同一首播放 |
+| 1 | 洛雪音源 | 用户启用了支持该平台的音源时优先，能给出 FLAC / 320K |
+| 2 | 平台原生 | 酷狗移动端 `playInfo`、酷我 `anti.s` 匿名即可取到完整直链；QQ 在写入登录态后走官方 `vkey`；网易云走本地 NCM |
+| 3 | 聚合备选 | 聚合结果行内自带 `sources[]`，当前平台不成功时按相关度依次尝试其他平台的同一首（每一条都经过校验） |
+| 4 | 跨平台兜底 | 按「歌名 + 歌手 + 时长」依次到网易云、酷我、酷狗检索同一首播放 |
 
-命中兜底或换了收录版本时，界面会明确提示实际播放的曲目，不会静默替换。
+平台取链的每个候选地址都会先用 `Range: bytes=0-65535` 探测音频头：拒绝 HTML/JSON 错误页、酷我 181521 字节试听占位、过小文件、异常码率与时长偏差过大的片段；**只有校验通过才写缓存**（缓存键包含音质，失败结果做 60 秒负缓存）。命中兜底或换了收录版本时，播放条与 toast 会明确提示实际播放来源，不会静默替换。
 
-**为什么 QQ 不能像网易云那样本地反代**：网易云的取链接口匿名即给 128K，返回的是服务端签好名的无状态 CDN 直链；QQ 的 `vkey` 与 `uin + guid` 强绑定，匿名请求 `purl` 恒为空（实测 `104003` / `1000`），必须登录态。酷狗的 `play/songinfo` 需要 `signature`（盐值随网页版改版变化），但移动端 `playInfo` 匿名可用——这也是原生取链默认只对酷狗开启的原因。
+**为什么 QQ 不能像网易云那样本地反代**：网易云的取链接口匿名即给 128K，返回的是服务端签好名的无状态 CDN 直链；QQ 的 `vkey` 与 `uin + guid` 强绑定，匿名请求 `purl` 恒为空（实测 `104003` / `1000`），必须登录态。酷狗的 `play/songinfo` 需要 `signature`（盐值随网页版改版变化），但移动端 `playInfo` 匿名可用；酷我 `antiserver` 同样匿名可用——因此原生取链默认对酷狗、酷我开放。
 
 **已知限制**：
 
@@ -303,7 +317,7 @@ QQ / 酷狗曲目的播放地址不走网易云，也不强依赖音源脚本，
 
 ## 🧪 UI 回归测试
 
-基于 Playwright 的真实交互回归（共 **215 项断言**）：
+基于 Playwright 的真实交互回归（共 **279 项断言**）：
 
 ```bash
 npm start                        # 或 ENABLE_NCM=0 node server/index.js
@@ -311,9 +325,10 @@ node scripts/ui-check.js         # 65 项交互检查 + 截图
 node scripts/ui-smoke.js         # 73 项全量冒烟（封面加载/分页/设置/语言切换/缓存/预取…）
 node scripts/proxy-check.js      # 12 项代理机制单测
 node scripts/search-guide-check.js # 19 项搜索引导与多语言检查
-node scripts/platform-url-check.js # 14 项多平台取链（匹配打分 + 酷狗直链 + QQ 兜底）
+node scripts/platform-search-check.js --offline # 51 项聚合搜索/取链校验（归一化/合并/探测/SSRF）
+node scripts/platform-url-check.js # 19 项多平台取链（匹配打分 + 酷狗直链 + 四级兜底）
 node scripts/version-check.js     # 5 项版本号契约（主进程/渲染层不重复加 v）
-node scripts/source-search-check.js # 15 项咪咕/汽水搜索源（委托洛雪音源 + 无源报错）
+node scripts/source-search-check.js # 23 项音源搜索（并行回退 + 能力查询 + 汽水）
 npx electron scripts/tray-check.js # 5 项托盘图标（ICO 空图回归 + 真实托盘坐标）
 npx electron scripts/cache-check.js # 7 项磁盘缓存（写入 → 统计 → 清理 → 幂等）
 node scripts/cache-e2e.js         # 7 项真机存储区验证（需图形界面，走完整 IPC）
@@ -325,11 +340,11 @@ node scripts/cache-e2e.js         # 7 项真机存储区验证（需图形界面
 
 ## 🗺 路线图
 
-- [x] **多平台搜索**：已支持网易云 / QQ 音乐 / 酷狗，直接按平台检索
+- [x] **多平台搜索**：聚合 / 网易云 / QQ 音乐 / 酷狗 / 酷我 / 咪咕直接检索，汽水经洛雪音源；跨平台合并去重、来源徽标、一键换源
 - [x] **歌单云同步 / 账号登录**：扫码 + 手机验证码 + 邮箱密码，云歌单直接播放
 - [x] **macOS / Linux 安装包**：dmg / zip / AppImage / deb，由 GitHub Actions 三平台矩阵构建
 - [x] **音效链扩展**：空间音频（M/S 加宽 + 卷积混响 + 压缩）与 5 套场景预设
-- [x] 咪咕 / 汽水搜索源接入（搜索与取链同走洛雪音源；需先导入支持其搜索的音源）
+- [x] 咪咕原生搜索；汽水搜索需先导入支持其搜索的洛雪音源
 - [ ] 歌单双向编辑（在客户端内增删云端歌单）
 
 已支持 ✅：应用内自动更新（`electron-updater` + GitHub Releases 源，发布新版本后启动即提示）

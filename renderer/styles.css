@@ -421,11 +421,24 @@ body::after {
 .platform[data-platform="wy"] .platform__dot { background: #e8453c; }
 .platform[data-platform="tx"] .platform__dot { background: #31c27c; }
 .platform[data-platform="kg"] .platform__dot { background: #2f7cf6; }
+.platform[data-platform="kw"] .platform__dot { background: #ff7a1a; }
+.platform[data-platform="mg"] .platform__dot { background: #e6006f; }
+.platform[data-platform="qs"] .platform__dot { background: #3a3a3a; }
+.platform[data-platform="all"] .platform__dot {
+  background: linear-gradient(135deg, #e8453c 0%, #31c27c 45%, #2f7cf6 100%);
+}
+.platform.is-disabled { opacity: .42; cursor: not-allowed; }
+.platform.is-disabled:hover { color: var(--muted); border-color: var(--border); transform: none; }
 .platform.is-active .platform__dot { box-shadow: 0 0 8px currentColor; }
 .searchmeta { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
 .searchmeta__text { color: var(--muted); font-size: 12.5px; }
 .searchmeta__text b { color: var(--text); font-weight: 600; }
 .searchmeta__actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.searchmeta__warn {
+  display: flex; align-items: flex-start; gap: 6px; margin: -6px 0 12px;
+  color: var(--warn, #d08a2c); font-size: 11.5px; line-height: 1.5;
+}
+.searchmeta__warn .ico { width: 13px; height: 13px; flex: none; margin-top: 1px; }
 .search-guide { padding: 6px 0 4px; }
 /* 分区标题行：图标 + 标题（左） / 操作或 hint（右） */
 .guide-head {
@@ -747,6 +760,28 @@ body.no-srctag .track__src { display: none; }
 /* 多平台来源：QQ/酷狗用中性色，避免和网易云的强调色混淆 */
 .track__src--plat { color: var(--muted); border-color: var(--border); }
 
+/* 聚合行来源徽标：最多 4 个平台 + 「N 个来源」 */
+.track__srcs { display: inline-flex; align-items: center; gap: 4px; margin-left: 8px; vertical-align: 1px; }
+.track__srcb {
+  font-size: 9.5px; font-family: var(--font-mono); color: var(--muted);
+  border: 1px solid var(--border); border-radius: 5px; padding: 0 4px; white-space: nowrap;
+}
+.track__srcb[data-plat="wy"] { color: #e8453c; border-color: color-mix(in srgb, #e8453c 35%, transparent); }
+.track__srcb[data-plat="tx"] { color: #31c27c; border-color: color-mix(in srgb, #31c27c 35%, transparent); }
+.track__srcb[data-plat="kg"] { color: #2f7cf6; border-color: color-mix(in srgb, #2f7cf6 35%, transparent); }
+.track__srcb[data-plat="kw"] { color: #ff7a1a; border-color: color-mix(in srgb, #ff7a1a 35%, transparent); }
+.track__srcb--more { color: var(--faint); }
+.track__srccount { font-size: 10px; color: var(--faint); white-space: nowrap; }
+.track__vip {
+  font-size: 9.5px; font-family: var(--font-mono); font-weight: 600; color: #d9a441;
+  border: 1px solid color-mix(in srgb, #d9a441 45%, transparent); border-radius: 4px;
+  padding: 0 4px; margin-left: 6px; vertical-align: 1px; white-space: nowrap;
+}
+.track__variant {
+  font-size: 9.5px; color: var(--faint); border: 1px dashed var(--border-strong);
+  border-radius: 4px; padding: 0 4px; margin-left: 6px; vertical-align: 1px; white-space: nowrap;
+}
+
 /* ---------- 歌词增强（播放详情页设置） ---------- */
 /* 歌词对齐 */
 .np__lyrics[data-align="left"] .lyric-line { margin-right: auto; }
@@ -855,6 +890,8 @@ html[data-anim="off"] * { transition-duration: 1ms !important; }
 .pb__meta { min-width: 0; }
 .pb__title { font-weight: 600; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pb__artist { color: var(--muted); font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
+.pb__src { color: var(--faint); font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
+.pb__src:empty { display: none; }
 .pb__center { display: flex; flex-direction: column; align-items: center; gap: 5px; min-width: 0; }
 .pb__controls { display: flex; align-items: center; gap: 10px; }
 .iconbtn {

@@ -30,6 +30,21 @@ const QUALITY_ORDER = ['flac24bit', 'flac', '320k', '192k', '128k'];
 const VALID_QUALITIES = new Set(QUALITY_ORDER);
 const VALID_SOURCES = new Set(['kw', 'kg', 'tx', 'wy', 'mg', 'qs', 'local']);
 
+// 单个音源一次请求的最长等待。超时后不取消底层 handler（JS 无法强制中断），
+// 由 handler 自身的网络超时兜底；这里只保证上层不会无限等待。
+const SOURCE_TIMEOUT_MS = Number(process.env.GUMAN_SOURCE_TIMEOUT)
+  ? Number(process.env.GUMAN_SOURCE_TIMEOUT)
+  : 8000;
+
+function withTimeout(promise, ms, label) {
+  let timer = null;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label || '音源'}响应超时（${ms}ms）`)), ms);
+  });
+  return Promise.race([Promise.resolve(promise), timeout])
+    .finally(() => { if (timer) clearTimeout(timer); });
+}
+
 const registry = new Map(); // id -> source record
 let config = { sources: [], quality: 'flac' };
 
@@ -216,6 +231,9 @@ async function requestAsync(url, options = {}) {
   const lib = isHttps ? https : http;
   const proxy = getProxyFor(url);
   const headers = { ...(options.headers || {}) };
+  const redirects = Number(options._redirects || 0);
+  const redirectLimit = options.redirectLimit == null ? 5 : Number(options.redirectLimit);
+  const maxBytes = Number(options.maxBytes || 0);
   let body;
 
   if (options.formData && typeof options.formData === 'object') {
@@ -259,14 +277,29 @@ async function requestAsync(url, options = {}) {
   return new Promise((resolve, reject) => {
     const req = lib.request(reqOptions, (res) => {
       if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-        const loc = new URL(res.headers.location, url).toString();
+        if (redirects >= redirectLimit) {
+          res.resume();
+          reject(new Error(`重定向次数过多（>${redirectLimit}）`));
+          return;
+        }
+        let loc;
+        try { loc = new URL(res.headers.location, url).toString(); } catch (_) {
+          res.resume();
+          reject(new Error('上游返回了非法重定向地址'));
+          return;
+        }
         res.resume(); // 丢弃重定向响应体
-        requestAsync(loc, options).then(resolve).catch(reject);
+        requestAsync(loc, { ...options, _redirects: redirects + 1 }).then(resolve).catch(reject);
         return;
       }
       const chunks = [];
-      res.on('data', (c) => chunks.push(c));
-      res.on('end', () => {
+      let size = 0;
+      let truncated = false;
+      let done = false;
+
+      const finish = () => {
+        if (done) return;
+        done = true;
         const raw = Buffer.concat(chunks);
         const contentType = (res.headers['content-type'] || '').toLowerCase();
         let parsedBody;
@@ -285,8 +318,34 @@ async function requestAsync(url, options = {}) {
           headers: res.headers,
           body: parsedBody,
           raw,
+          truncated,
         });
+      };
+
+      res.on('data', (c) => {
+        if (maxBytes > 0) {
+          const remain = maxBytes - size;
+          if (remain <= 0) {
+            truncated = true;
+            res.destroy();
+            finish();
+            return;
+          }
+          if (c.length > remain) {
+            chunks.push(c.subarray(0, remain));
+            size += remain;
+            truncated = true;
+            res.destroy();
+            finish();
+            return;
+          }
+        }
+        chunks.push(c);
+        size += c.length;
       });
+      res.on('end', finish);
+      res.on('close', () => { if (truncated) finish(); });
+      res.on('error', () => { if (truncated) finish(); });
     });
 
     req.on('error', (err) => {
@@ -303,7 +362,63 @@ async function requestAsync(url, options = {}) {
   });
 }
 
+/**
+ * 音源网络请求的地址校验（尽力而为的 SSRF 防护）。
+ *
+ * 音源脚本由用户导入，默认不应能借服务端访问本机/内网服务。这里只拦字面量地址；
+ * DNS rebinding（域名解析到内网）无法在请求前完全防住，需要系统层网络隔离。
+ * 音源确实要访问内部服务时，可在 request options 里传 allowPrivateHost: true。
+ */
+function isPrivateHost(hostname) {
+  let h = String(hostname || '').toLowerCase();
+  if (!h) return true;
+  if (h.startsWith('[') && h.endsWith(']')) h = h.slice(1, -1);
+  h = h.replace(/\.$/, '');
+  if (h === 'localhost' || h.endsWith('.localhost') || h === '0.0.0.0') return true;
+
+  // IPv6 字面量：::1 / fc00::/7 / fe80::/10 / IPv4 映射地址
+  if (h.includes(':')) {
+    if (h === '::1' || h === '::') return true;
+    if (/^f[cd][0-9a-f]{2}:/.test(h)) return true;
+    if (/^fe[89ab][0-9a-f]:/.test(h)) return true;
+    const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(h);
+    if (mapped) return isPrivateHost(mapped[1]);
+    return false;
+  }
+
+  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(h);
+  if (!m) return false; // 普通域名：交给 DNS / 后续网络策略
+  const [a, b] = [Number(m[1]), Number(m[2])];
+  if (a === 0 || a === 10 || a === 127) return true;
+  if (a === 169 && b === 254) return true;
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  if (a === 192 && b === 168) return true;
+  if (a === 100 && b >= 64 && b <= 127) return true; // CGNAT
+  if (a === 198 && (b === 18 || b === 19)) return true;
+  if (a >= 224) return true; // 组播/保留
+  return false;
+}
+
+function assertAllowedUrl(url, options) {
+  if (options && options.allowPrivateHost) return;
+  if (process.env.GUMAN_ALLOW_PRIVATE_HOST === '1') return;
+  let u;
+  try { u = new URL(String(url)); } catch (_) { throw new Error('无效的请求地址'); }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') {
+    throw new Error('仅允许 http(s) 请求');
+  }
+  if (isPrivateHost(u.hostname)) {
+    throw new Error('已拒绝访问本机/内网地址（如确需访问，请在 request options 中设置 allowPrivateHost）');
+  }
+}
+
 function lxRequest(url, options, callback) {
+  try {
+    assertAllowedUrl(url, options);
+  } catch (e) {
+    const timer = setImmediate(() => { if (callback) callback(e, null, null); });
+    return () => clearImmediate(timer);
+  }
   let cancelled = false;
   const p = requestAsync(url, options)
     .then((resp) => {
@@ -527,7 +642,11 @@ function runScript(code, meta, existingId) {
 
   const sandbox = makeSandbox(record);
   try {
-    vm.createContext(sandbox);
+    // 注意：vm 不是安全边界。这里的 codeGeneration 收紧只是提高利用门槛，
+    // 真正隔离音源脚本需要操作系统/容器层面的沙箱。
+    // 默认关闭以兼容现有音源；GUMAN_STRICT_SANDBOX=1 时禁用字符串代码生成与 wasm。
+    const strict = process.env.GUMAN_STRICT_SANDBOX === '1';
+    vm.createContext(sandbox, strict ? { codeGeneration: { strings: false, wasm: false } } : undefined);
     vm.runInContext(code, sandbox, { timeout: 10000, filename: meta.name || 'source.js' });
   } catch (e) {
     clearTimeout(record.initTimer);
@@ -570,6 +689,35 @@ function getSourceSummary(record) {
 
 function getSources() {
   return Array.from(registry.values()).map(getSourceSummary);
+}
+
+/**
+ * 汇总所有「已启用且初始化成功」音源的能力。
+ * @returns {{search:string[], musicUrl:string[], lyric:string[], pic:string[], initializing:number, sources:number}}
+ *   initializing：已注册但尚未初始化完成的音源数（用于前端显示「音源初始化中」）
+ */
+function getCapabilities() {
+  const records = Array.from(registry.values());
+  const ready = records.filter((r) => r.enabled && r.inited && !r.error);
+  const caps = { search: [], musicUrl: [], lyric: [], pic: [] };
+  for (const rec of ready) {
+    for (const [platform, src] of Object.entries(rec.sources || {})) {
+      const actions = (src && Array.isArray(src.actions)) ? src.actions : [];
+      for (const action of actions) {
+        if (!caps[action]) continue;
+        if (!caps[action].includes(platform)) caps[action].push(platform);
+      }
+    }
+  }
+  caps.initializing = records.filter((r) => r.enabled && !r.inited).length;
+  caps.sources = ready.length;
+  return caps;
+}
+
+/** 声明了某个 action 的平台列表（如 search → ['mg','qs']） */
+function platformsWithAction(action = 'search') {
+  const caps = getCapabilities();
+  return Array.isArray(caps[action]) ? caps[action].slice() : [];
 }
 
 async function addSource({ code, url, filePath, enabled = true }) {
@@ -714,58 +862,89 @@ async function resolveAction({ sourcePlatform, action, musicInfo, quality, sourc
     (r) => r.enabled && r.inited && !r.error && (!sourceId || r.id === sourceId)
   );
 
-  // 记录每个音源的尝试结果，全部失败时汇总成对用户友好的错误信息
-  const attempts = [];
-
+  // 按注册顺序建立候选表；attempts 同下标回填失败原因，保证汇总顺序稳定。
+  const entries = [];
   for (const rec of records) {
     const src = rec.sources[sourcePlatform];
     if (!src || !Array.isArray(src.actions) || !src.actions.includes(action)) continue;
-
-    const handler = rec.handlers.request;
-    if (typeof handler !== 'function') continue;
-
+    if (typeof rec.handlers.request !== 'function') continue;
     const q = action === 'musicUrl' ? pickQuality(quality, src.qualitys || []) : null;
-    if (action === 'musicUrl' && !q) {
-      attempts.push({ id: rec.meta.name, err: '不支持该音质' });
-      continue;
-    }
+    entries.push({ rec, q, err: action === 'musicUrl' && !q ? '不支持该音质' : null });
+  }
 
-    try {
-      const info = action === 'musicUrl' ? { type: q, musicInfo } : { musicInfo };
-      const result = await handler({ source: sourcePlatform, action, info });
+  const attempts = new Array(entries.length).fill(null);
+  const tasks = [];
+
+  entries.forEach((entry, i) => {
+    const label = entry.rec.meta.name;
+    if (entry.err) {
+      attempts[i] = { id: label, err: entry.err };
+      return;
+    }
+    const { rec, q } = entry;
+    const handler = rec.handlers.request;
+
+    // 每个音源一个并行任务；超时不取消底层 handler（JS 无法强制中断），
+    // 由 handler 自身的网络超时兜底，这里只保证上层不会无限等待。
+    const task = (async () => {
+      let result;
+      try {
+        const info = action === 'musicUrl' ? { type: q, musicInfo } : { musicInfo };
+        result = await withTimeout(
+          Promise.resolve().then(() => handler({ source: sourcePlatform, action, info })),
+          SOURCE_TIMEOUT_MS,
+          label,
+        );
+      } catch (e) {
+        attempts[i] = { id: label, err: (e && e.message) || String(e) };
+        throw e;
+      }
       if (result == null) {
-        attempts.push({ id: rec.meta.name, err: '无返回' });
-        continue;
+        attempts[i] = { id: label, err: '无返回' };
+        throw new Error('无返回');
       }
 
       if (action === 'musicUrl') {
         if (typeof result === 'string' && result.startsWith('http')) {
           return { url: result, sourceId: rec.id, platform: sourcePlatform, quality: q };
         }
-        attempts.push({ id: rec.meta.name, err: '返回的不是有效链接' });
-      } else if (action === 'pic') {
+        attempts[i] = { id: label, err: '返回的不是有效链接' };
+        throw new Error('返回的不是有效链接');
+      }
+      if (action === 'pic') {
         if (typeof result === 'string' && result.startsWith('http')) {
           return { url: result, sourceId: rec.id, platform: sourcePlatform, action };
         }
-        attempts.push({ id: rec.meta.name, err: '返回的不是有效链接' });
-      } else if (action === 'lyric') {
-        return { lyric: result, sourceId: rec.id, platform: sourcePlatform, action };
+        attempts[i] = { id: label, err: '返回的不是有效链接' };
+        throw new Error('返回的不是有效链接');
       }
-    } catch (e) {
-      attempts.push({ id: rec.meta.name, err: e.message });
-    }
-  }
+      return { lyric: result, sourceId: rec.id, platform: sourcePlatform, action };
+    })();
+    tasks.push(task);
+  });
 
-  if (!attempts.length) {
+  const failedSummary = () => {
+    const failed = attempts.filter(Boolean);
+    if (process.env.GUMAN_DEBUG === '1') {
+      failed.forEach((a) => console.warn(`[source] ${a.id} ${action} failed: ${a.err}`));
+    }
+    // 汇总前 3 个失败原因，避免错误信息过长
+    const detail = failed.slice(0, 3).map((a) => `${a.id}（${a.err}）`).join('；');
+    const more = failed.length > 3 ? ` 等 ${failed.length} 个` : '';
+    return `已尝试 ${failed.length} 个音源均失败：${detail}${more}`;
+  };
+
+  if (!entries.length) {
     throw new Error(`没有支持 ${sourcePlatform} 平台的可用音源（请检查音源是否启用、是否支持该平台）`);
   }
-  if (process.env.GUMAN_DEBUG === '1') {
-    attempts.forEach((a) => console.warn(`[source] ${a.id} ${action} failed: ${a.err}`));
+  if (!tasks.length) throw new Error(failedSummary());
+
+  try {
+    // Promise.any 只在全部失败后 reject，此时 attempts 已全部回填
+    return await Promise.any(tasks);
+  } catch (_) {
+    throw new Error(failedSummary());
   }
-  // 汇总前 3 个失败原因，避免错误信息过长
-  const detail = attempts.slice(0, 3).map((a) => `${a.id}（${a.err}）`).join('；');
-  const more = attempts.length > 3 ? ` 等 ${attempts.length} 个` : '';
-  throw new Error(`已尝试 ${attempts.length} 个音源均失败：${detail}${more}`);
 }
 
 /**
@@ -785,32 +964,54 @@ async function resolveAction({ sourcePlatform, action, musicInfo, quality, sourc
 async function resolveSearch({ sourcePlatform, keyword, page = 1, limit = 30 }) {
   if (!VALID_SOURCES.has(sourcePlatform)) throw new Error(`不支持的平台: ${sourcePlatform}`);
   const records = Array.from(registry.values()).filter((r) => r.enabled && r.inited && !r.error);
-  const attempts = [];
 
+  const entries = [];
   for (const rec of records) {
     const src = rec.sources[sourcePlatform];
     if (!src || !Array.isArray(src.actions) || !src.actions.includes('search')) continue;
-    const handler = rec.handlers.request;
-    if (typeof handler !== 'function') continue;
+    if (typeof rec.handlers.request !== 'function') continue;
+    entries.push(rec);
+  }
 
-    try {
-      // 洛雪协议搜索：info.keywork（注意是 keywork，协议里的拼写）
-      const result = await handler({ source: sourcePlatform, action: 'search', info: { keywork: keyword, page, limit } });
+  const attempts = new Array(entries.length).fill(null);
+  const tasks = entries.map((rec, i) => {
+    const label = rec.meta.name;
+    return (async () => {
+      let result;
+      try {
+        // 洛雪协议搜索：info.keywork（注意是 keywork，协议里的拼写）
+        result = await withTimeout(
+          Promise.resolve().then(() => rec.handlers.request({
+            source: sourcePlatform, action: 'search', info: { keywork: keyword, page, limit },
+          })),
+          SOURCE_TIMEOUT_MS,
+          label,
+        );
+      } catch (e) {
+        attempts[i] = { id: label, err: (e && e.message) || String(e) };
+        throw e;
+      }
       if (Array.isArray(result) && result.length) {
         return { list: result, sourceId: rec.id, platform: sourcePlatform };
       }
-      attempts.push({ id: rec.meta.name, err: '无结果' });
-    } catch (e) {
-      attempts.push({ id: rec.meta.name, err: e.message });
-    }
-  }
+      attempts[i] = { id: label, err: '无结果' };
+      throw new Error('无结果');
+    })();
+  });
 
-  if (!attempts.length) {
+  if (!entries.length) {
     throw new Error(`没有支持 ${sourcePlatform} 搜索的可用音源（请到 设置 → 自定义源管理 导入支持该平台搜索的音源）`);
   }
-  const detail = attempts.slice(0, 3).map((a) => `${a.id}（${a.err}）`).join('；');
-  const more = attempts.length > 3 ? ` 等 ${attempts.length} 个` : '';
-  throw new Error(`已尝试 ${attempts.length} 个音源均失败：${detail}${more}`);
+
+  try {
+    // 接受首个非空结果；Promise.any 全部失败后才 reject
+    return await Promise.any(tasks);
+  } catch (_) {
+    const failed = attempts.filter(Boolean);
+    const detail = failed.slice(0, 3).map((a) => `${a.id}（${a.err}）`).join('；');
+    const more = failed.length > 3 ? ` 等 ${failed.length} 个` : '';
+    throw new Error(`已尝试 ${failed.length} 个音源均失败：${detail}${more}`);
+  }
 }
 
 async function resolveMusicUrl(opts) {
@@ -820,6 +1021,8 @@ async function resolveMusicUrl(opts) {
 module.exports = {
   init,
   getSources,
+  getCapabilities,
+  platformsWithAction,
   addSource,
   removeSource,
   setSourceEnabled,
@@ -831,5 +1034,6 @@ module.exports = {
   resolveAction,
   requestAsync,
   QUALITY_ORDER,
-  __test: { requestAsync, getProxyFor },
+  SOURCE_TIMEOUT_MS,
+  __test: { requestAsync, getProxyFor, withTimeout, isPrivateHost, assertAllowedUrl },
 };

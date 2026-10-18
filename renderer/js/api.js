@@ -38,13 +38,25 @@ function memo(key, fn, ttl = CACHE_TTL) {
   return p;
 }
 
-function signal() {
-  try { return AbortSignal.timeout(TIMEOUT); } catch (_) { return undefined; }
+function signal(extra, timeout = TIMEOUT) {
+  const list = [];
+  try { list.push(AbortSignal.timeout(timeout)); } catch (_) { /* 老内核无 timeout */ }
+  if (extra) list.push(extra);
+  if (!list.length) return undefined;
+  if (list.length === 1) return list[0];
+  if (typeof AbortSignal.any === 'function') return AbortSignal.any(list);
+  // 兼容：手动把外部取消桥接到内部控制器
+  const ctrl = new AbortController();
+  for (const s of list) {
+    if (s.aborted) { ctrl.abort(s.reason); break; }
+    s.addEventListener('abort', () => ctrl.abort(s.reason), { once: true });
+  }
+  return ctrl.signal;
 }
 
-async function request(path, params) {
+async function request(path, params, opts = {}) {
   const qs = params ? '?' + new URLSearchParams(params) : '';
-  const res = await fetch(BASE + path + qs, { signal: signal() });
+  const res = await fetch(BASE + path + qs, { signal: signal(opts.signal, opts.timeout || TIMEOUT) });
   const mode = res.headers.get('X-Api-Mode');
   if (mode) api.lastMode = mode;
   if (!res.ok) {
@@ -59,13 +71,12 @@ async function request(path, params) {
 const dataOf = (p) => p.then((r) => (r && Object.prototype.hasOwnProperty.call(r, 'data') ? r.data : r));
 
 async function post(path, body, timeout = TIMEOUT) {
-  let sig;
-  try { sig = AbortSignal.timeout(timeout); } catch (_) { sig = undefined; }
+  const opts = typeof timeout === 'number' ? { timeout } : (timeout || {});
   const res = await fetch(BASE + path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
-    signal: sig,
+    signal: signal(opts.signal, opts.timeout || TIMEOUT),
   });
   const j = await res.json().catch(() => ({ code: res.status, msg: 'invalid response' }));
   if (j.code !== 0) throw new Error(j.msg || 'API error');
@@ -78,7 +89,12 @@ export const api = {
   invalidate,
   _hasSources: null,
   _hasSourcesAt: 0,
-  invalidateSources() { this._hasSources = null; this._hasSourcesAt = 0; },
+  invalidateSources() {
+    this._hasSources = null;
+    this._hasSourcesAt = 0;
+    // 通知搜索页刷新平台可用性（汽水是否可搜取决于音源能力）
+    try { window.dispatchEvent(new CustomEvent('guman:sources-changed')); } catch (_) { /* ignore */ }
+  },
   async hasEnabledSources() {
     // 缓存 10s，避免每首歌都探测；音源可能仍在异步初始化，因此不做长期缓存
     if (this._hasSources !== null && Date.now() - this._hasSourcesAt < 10000) return this._hasSources;
@@ -106,13 +122,20 @@ export const api = {
   playlistDetail: (id) => memo('pldetail:' + id, () => request('/playlist/detail', { id })),
   playlistTracks: (id) => memo('pltracks:' + id, () => request('/playlist/track/all', { id }), 5 * 60 * 1000),
   // 搜索：offset 用于服务端分页（歌曲/歌单总数在 result.songCount / playlistCount）
-  search: (keywords, type = 1, limit = 30, offset = 0) =>
-    memo(`search:${keywords}:${type}:${limit}:${offset}`, () => request('/search', { keywords, type, limit, offset })),
-  // 多平台搜索：直接按平台检索（wy 走上面，tx/kg 走这里）
+  // 搜索不做前端 memo：后端已有 5 分钟缓存，且输入时应始终拿到最新结果/支持 abort
+  search: (keywords, type = 1, limit = 30, offset = 0, opts = {}) =>
+    request('/search', { keywords, type, limit, offset }, opts),
+  // 多平台搜索：直接按平台检索（wy 走上面，tx/kg/kw/mg 走这里）
   platformList: () => dataOf(request('/platform/list')),
-  platformSearch: (platform, keywords, page = 1, limit = 30) =>
-    dataOf(memo(`psearch:${platform}:${keywords}:${page}:${limit}`,
-      () => request('/platform/search', { platform, keywords, page, limit }))),
+  platformSearch: (platform, keywords, page = 1, limit = 30, opts = {}) =>
+    dataOf(request('/platform/search', { platform, keywords, page, limit }, opts)),
+  // 聚合搜索：多平台合并为一首一行，带 sources[] 备选
+  platformSearchAll: (keywords, page = 1, limit = 30, sources = '', opts = {}) =>
+    dataOf(request('/platform/search-all', {
+      keywords, page, limit, ...(sources ? { sources } : {}),
+    }, opts)),
+  // 备选来源（换源播放）：按歌名 + 歌手跨平台召回
+  platformAlternatives: (payload) => post('/platform/alternatives', payload, 20000),
   // 平台原生取链（酷狗匿名直链 / QQ 登录态或跨平台兜底）
   platformUrl: (payload) => post('/platform/url', payload, 30000),
   platformHealth: () => dataOf(request('/platform/health')),

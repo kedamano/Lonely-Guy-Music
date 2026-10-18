@@ -73,7 +73,7 @@ export function trackKey(t) {
 }
 
 // 多平台搜索结果在曲目行上标注来源，避免全部显示成「网易云」
-export const PLATFORM_LABELS = { wy: '网易云', tx: 'QQ 音乐', kg: '酷狗', mg: '咪咕', qs: '汽水' };
+export const PLATFORM_LABELS = { all: '聚合', wy: '网易云', tx: 'QQ 音乐', kg: '酷狗', kw: '酷我', mg: '咪咕', qs: '汽水' };
 
 /* ---------------- 封面 ---------------- */
 // 封面统一走同源代理：绕过防盗链/混合内容，与音频同一通道
@@ -402,15 +402,36 @@ export function renderTrackList(container, tracks, {
     ]);
     row.appendChild(idx);
 
+    const titleKids = [document.createTextNode(t.name)];
+    const srcs = Array.isArray(t.sources) ? t.sources : null;
+    if (srcs && srcs.length) {
+      // 聚合行的来源徽标：最多 4 个平台 + 余量，后跟「N 个来源」
+      const srcWrap = el('span', { class: 'track__srcs' });
+      const plats = [...new Set(srcs.map((s) => s && s.platform).filter(Boolean))];
+      plats.slice(0, 4).forEach((p) => {
+        srcWrap.appendChild(el('span', {
+          class: 'track__srcb', 'data-plat': p, text: PLATFORM_LABELS[p] || p,
+        }));
+      });
+      if (plats.length > 4) {
+        srcWrap.appendChild(el('span', { class: 'track__srcb track__srcb--more', text: `+${plats.length - 4}` }));
+      }
+      if (srcs.length > 1) {
+        srcWrap.appendChild(el('span', { class: 'track__srccount', text: `${t.sourceCount || srcs.length} 个来源` }));
+      }
+      titleKids.push(srcWrap);
+    } else if (showSource) {
+      titleKids.push(el('span', {
+        class: 'track__src' + (t.platform && t.platform !== 'wy' ? ' track__src--plat' : ''),
+        'data-plat': t.platform || 'wy',
+        text: t.source === 'local' ? '本地' : (PLATFORM_LABELS[t.platform] || '网易云'),
+      }));
+    }
+    if (t.vip) titleKids.push(el('span', { class: 'track__vip', text: 'VIP' }));
+    if (t.variant) titleKids.push(el('span', { class: 'track__variant', text: t.variant }));
+
     row.appendChild(el('div', { class: 'track__main' }, [
-      el('div', { class: 'track__title' }, [
-        document.createTextNode(t.name),
-        showSource ? el('span', {
-          class: 'track__src' + (t.platform && t.platform !== 'wy' ? ' track__src--plat' : ''),
-          'data-plat': t.platform || 'wy',
-          text: t.source === 'local' ? '本地' : (PLATFORM_LABELS[t.platform] || '网易云'),
-        }) : null,
-      ]),
+      el('div', { class: 'track__title' }, titleKids),
       el('div', { class: 'track__artist', text: t.artist || '未知艺人' }),
     ]));
 

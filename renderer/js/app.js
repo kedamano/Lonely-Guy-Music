@@ -7,7 +7,7 @@ import { activeLine } from './lyrics.js';
 import {
   el, icon, hydrateIcons, setIcon, setCover, cover, fmtTime, fmtMs, toast,
   renderPlaylistGrid, renderTrackList, heading, emptyState, trackKey,
-  skeletonCards, skeletonRows, playCountText, proxyUrl, pager,
+  skeletonCards, skeletonRows, playCountText, proxyUrl, pager, PLATFORM_LABELS,
   openMenu, openModal, closeModal, promptText, confirmModal,
 } from './ui.js';
 import { SettingsView } from './settings.js';
@@ -356,16 +356,21 @@ const SEARCH_PAGE_SIZE = 30;
 const search = {
   query: '', type: 1, loading: false, error: '',
   songs: [], playlists: [], songCount: 0, playlistCount: 0,
-  resultQuery: '', resultType: 0, seq: 0,
+  resultQuery: '', resultType: 0, resultPlatform: '', seq: 0,
   page: 1, pageCount: 1, total: 0,
-  // 多平台搜索：wy 走网易云 NCM，tx/kg 直接打平台接口
+  // 聚合搜索的局部失败（部分平台超时/限流），只提示不阻断结果
+  errors: [],
+  platformCount: 0,
+  abort: null,
+  // 多平台搜索：wy 走网易云 NCM，tx/kg/kw/mg 直接打平台接口，all 聚合
   platform: 'wy',
 };
 
 // 平台清单（后端 /api/platform/list 为准，失败回退内置，保证离线也能用界面）
 const PLATFORM_FALLBACK = [
+  { key: 'all', label: '聚合' },
   { key: 'wy', label: '网易云' }, { key: 'tx', label: 'QQ 音乐' }, { key: 'kg', label: '酷狗' },
-  { key: 'mg', label: '咪咕' }, { key: 'qs', label: '汽水' },
+  { key: 'kw', label: '酷我' }, { key: 'mg', label: '咪咕' }, { key: 'qs', label: '汽水' },
 ];
 let platformOptions = PLATFORM_FALLBACK.slice();
 let platformLoaded = false;
@@ -374,12 +379,39 @@ async function ensurePlatforms() {
   platformLoaded = true;
   try {
     const list = await api.platformList();
-    if (Array.isArray(list) && list.length) platformOptions = list.map((p) => ({ key: p.key, label: p.label }));
+    if (Array.isArray(list) && list.length) {
+      platformOptions = [
+        { key: 'all', label: '聚合', available: true },
+        ...list.map((p) => ({
+          key: p.key,
+          label: p.label,
+          available: p.available !== false,
+          reason: p.reason || '',
+          searchable: p.searchable !== false,
+          viaSource: !!p.viaSource,
+          playback: p.playback,
+        })),
+      ];
+    }
   } catch (_) { /* 离线/接口异常时保持内置清单 */ }
 }
 
+/** 音源导入/启停后刷新平台可用性（汽水是否可搜取决于音源能力） */
+function refreshPlatformAvailability() {
+  platformLoaded = false;
+  return ensurePlatforms().then(() => {
+    if (currentRoute !== 'search') return;
+    const old = view.querySelector('.platforms');
+    if (old) old.replaceWith(platformChips());
+  });
+}
+window.addEventListener('guman:sources-changed', () => { refreshPlatformAvailability(); });
+
 // 平台搜索结果 → 统一曲目结构（与网易云曲目字段一致，额外带 platform/musicInfo）
 function normalizePlatformTrack(t) {
+  const sources = Array.isArray(t.sources)
+    ? t.sources.map((s) => normalizePlatformTrack(s))
+    : undefined;
   return {
     id: t.id,
     platform: t.platform,
@@ -391,7 +423,14 @@ function normalizePlatformTrack(t) {
     duration: t.duration,
     source: 'platform',
     playable: t.playable !== false,
+    vip: !!t.vip,
+    variant: t.variant || null,
+    merged: !!t.merged,
+    sourceCount: Number(t.sourceCount || 0) || (sources ? sources.length : 0),
+    sources,
+    qualityHints: t.qualityHints,
     musicInfo: t.musicInfo,
+    matchScore: t.matchScore,
   };
 }
 
@@ -399,13 +438,22 @@ function platformChips() {
   const wrap = el('div', { class: 'platforms reveal', role: 'tablist', 'aria-label': '搜索平台' });
   platformOptions.forEach((p) => {
     const active = search.platform === p.key;
+    const disabled = p.available === false;
     wrap.appendChild(el('button', {
       type: 'button',
-      class: 'platform' + (active ? ' is-active' : ''),
+      class: 'platform' + (active ? ' is-active' : '') + (disabled ? ' is-disabled' : ''),
       'data-platform': p.key,
       role: 'tab',
       'aria-selected': active ? 'true' : 'false',
-      onclick: () => setSearchPlatform(p.key),
+      'aria-disabled': disabled ? 'true' : 'false',
+      title: disabled ? (p.reason || '当前不可用') : '',
+      onclick: () => {
+        if (disabled) {
+          toast(p.reason || `${p.label} 当前不可用`, 2600, 'warn');
+          return;
+        }
+        setSearchPlatform(p.key);
+      },
     }, [
       el('span', { class: 'platform__dot', 'data-plat': p.key }),
       p.label,
@@ -432,7 +480,7 @@ function setSearchPlatform(key) {
 
 function renderSearch() {
   view.innerHTML = '';
-  view.appendChild(heading('SEARCH', '搜索', '多平台搜索：网易云 / QQ 音乐 / 酷狗 / 咪咕 / 汽水，输入即搜，回车立即执行。咪咕与汽水需先在 设置 → 自定义源管理 导入支持其搜索的洛雪音源。'));
+  view.appendChild(heading('SEARCH', '搜索', '多平台搜索：聚合 / 网易云 / QQ 音乐 / 酷狗 / 酷我 / 咪咕 / 汽水。聚合会把各平台同一首歌合并为一行，播放失败自动换源；汽水需先导入支持其搜索的洛雪音源。'));
   const input = el('input', {
     id: 'searchInput', type: 'text', placeholder: '想听点什么？歌曲 / 歌单 / 艺人',
     autocomplete: 'off', spellcheck: 'false',
@@ -481,7 +529,8 @@ function renderSearch() {
   renderSearchOutput();
   revealIn();
 
-  if (search.query.trim() && (search.resultQuery !== search.query.trim() || search.resultType !== search.type)) {
+  if (search.query.trim() && (search.resultQuery !== search.query.trim()
+    || search.resultType !== search.type || search.resultPlatform !== search.platform)) {
     runSearch(true);
   }
   // 平台清单以后端为准：拿到后原地替换 chips（内置清单保证首帧不空）
@@ -502,8 +551,10 @@ function renderSearch() {
 
 function resetSearchResults() {
   search.songs = []; search.playlists = []; search.error = '';
-  search.resultQuery = ''; search.resultType = 0;
+  search.resultQuery = ''; search.resultType = 0; search.resultPlatform = '';
+  search.errors = []; search.platformCount = 0;
   search.loading = false; search.seq += 1;
+  if (search.abort) { try { search.abort.abort(); } catch (_) { /* ignore */ } search.abort = null; }
   search.page = 1; search.pageCount = 1; search.total = 0;
   if (searchTimer) { clearTimeout(searchTimer); searchTimer = null; }
 }
@@ -553,14 +604,42 @@ async function runSearch(immediate = false) {
     searchTimer = setTimeout(() => runSearch(true), 300);
     return;
   }
+
+  const platform = search.platform;
+  if (platform !== 'wy' && platform !== 'all') {
+    const opt = platformOptions.find((p) => p.key === platform);
+    if (opt && opt.available === false) {
+      toast(opt.reason || `${opt.label} 当前不可用`, 2600, 'warn');
+      return;
+    }
+  }
+
+  // 取消上一次请求：快速输入/切平台时旧响应不允许再落到界面上
+  if (search.abort) { try { search.abort.abort(); } catch (_) { /* ignore */ } }
+  const ctrl = new AbortController();
+  search.abort = ctrl;
+
   const seq = ++search.seq;
   search.loading = true;
   search.error = '';
+  search.errors = [];
+  search.platformCount = 0;
   renderSearchOutput();
   try {
-    if (search.platform !== 'wy') {
-      // 直连平台接口（QQ / 酷狗）：不分类型，统一按歌曲返回
-      const d = await api.platformSearch(search.platform, q, search.page, SEARCH_PAGE_SIZE);
+    if (platform === 'all') {
+      const d = await api.platformSearchAll(q, search.page, SEARCH_PAGE_SIZE, '', { signal: ctrl.signal });
+      if (seq !== search.seq) return;
+      search.songs = (d.list || []).map(normalizePlatformTrack);
+      search.playlists = [];
+      search.songCount = search.songs.length;
+      search.playlistCount = 0;
+      search.total = null;
+      search.errors = Array.isArray(d.errors) ? d.errors : [];
+      search.platformCount = (d.platforms || []).filter((p) => !p.error).length;
+      search.pageCount = d.hasMore ? search.page + 1 : Math.max(1, search.page);
+    } else if (platform !== 'wy') {
+      // 直连平台接口（QQ / 酷狗 / 酷我 / 咪咕）：不分类型，统一按歌曲返回
+      const d = await api.platformSearch(platform, q, search.page, SEARCH_PAGE_SIZE, { signal: ctrl.signal });
       if (seq !== search.seq) return;
       search.songs = (d.list || []).map(normalizePlatformTrack);
       search.playlists = [];
@@ -571,7 +650,7 @@ async function runSearch(immediate = false) {
       search.pageCount = d.hasMore ? search.page + 1 : Math.max(1, search.page);
     } else {
       // 服务端分页：offset = (page-1) * pageSize
-      const r = await api.search(q, search.type, SEARCH_PAGE_SIZE, (search.page - 1) * SEARCH_PAGE_SIZE);
+      const r = await api.search(q, search.type, SEARCH_PAGE_SIZE, (search.page - 1) * SEARCH_PAGE_SIZE, { signal: ctrl.signal });
       if (seq !== search.seq) return;
       if (search.type === 1) {
         search.songs = (r.result.songs || []).map(normalizeTrack);
@@ -586,12 +665,15 @@ async function runSearch(immediate = false) {
     }
     search.resultQuery = q;
     search.resultType = search.type;
+    search.resultPlatform = platform;
   } catch (e) {
     if (seq !== search.seq) return;
+    if (e && e.name === 'AbortError') return;
     search.error = e.message || '网络异常';
   } finally {
     if (seq === search.seq) {
       search.loading = false;
+      if (search.abort === ctrl) search.abort = null;
       updateSearchTabs();
       renderSearchOutput();
     }
@@ -639,7 +721,8 @@ function renderSearchOutput() {
   const q = search.query.trim();
   if (!q) { out.appendChild(buildSearchGuide()); return; }
 
-  if (search.loading || search.resultQuery !== q || search.resultType !== search.type) {
+  if (search.loading || search.resultQuery !== q || search.resultType !== search.type
+    || search.resultPlatform !== search.platform) {
     out.appendChild(el('div', { class: 'search-loading' }, [el('span', { class: 'spinner' }), `正在搜索「${q}」…`]));
     out.appendChild(skeletonRows(8));
     return;
@@ -662,13 +745,23 @@ function renderSearchOutput() {
     }
     const metaText = el('div', { class: 'searchmeta__text' });
     const platLabel = (platformOptions.find((p) => p.key === search.platform) || {}).label || '';
-    tpl(metaText, search.platform === 'wy'
-      ? '找到 <b>{n}</b> 首与「{q}」相关的歌曲'
-      : '{plat} · 本页 <b>{n}</b> 首与「{q}」相关', {
-      n: search.songCount || search.songs.length,
-      q: escapeHtml(q),
-      plat: platLabel,
-    });
+    if (search.platform === 'all') {
+      tpl(metaText, '聚合 · 找到 <b>{n}</b> 首 · {m} 个来源', {
+        n: search.songCount || search.songs.length,
+        m: search.platformCount || 0,
+      });
+    } else if (search.platform === 'wy') {
+      tpl(metaText, '找到 <b>{n}</b> 首与「{q}」相关的歌曲', {
+        n: search.songCount || search.songs.length,
+        q: escapeHtml(q),
+      });
+    } else {
+      tpl(metaText, '{plat} · 本页 <b>{n}</b> 首与「{q}」相关', {
+        n: search.songCount || search.songs.length,
+        q: escapeHtml(q),
+        plat: platLabel,
+      });
+    }
     out.appendChild(el('div', { class: 'searchmeta' }, [
       metaText,
       el('div', { class: 'searchmeta__actions' }, [
@@ -676,6 +769,15 @@ function renderSearchOutput() {
         el('button', { class: 'btn btn--small', onclick: () => addAllToQueue(search.songs) }, [icon('plus'), '加入队列']),
       ]),
     ]));
+    if (search.platform === 'all' && search.errors.length) {
+      out.appendChild(el('div', { class: 'searchmeta__warn' }, [
+        icon('alert'),
+        el('span', {
+          text: '部分平台失败：' + search.errors
+            .map((e) => `${e.label || e.platform}（${e.message}）`).join('；'),
+        }),
+      ]));
+    }
     const list = el('div', { class: 'tracklist' });
     renderTrackList(list, search.songs, {
       onPlay: (t, i) => playCollection(search.songs, i),
@@ -1257,15 +1359,18 @@ async function renderSheet(id, token) {
 }
 
 /* ---------------- 曲目右键菜单 ---------------- */
-function openTrackMenu(track, index, pos, { scope = null, onRemove = null, removeTitle = '移除' } = {}) {
+function openTrackMenu(track, index, pos, { scope = null, onRemove = null, removeTitle = '移除', onReRender = null } = {}) {
   const faved = store.isFav(trackKey(track));
   const inSheets = new Set(store.sheetsOfTrack(track));
   const items = [
     { label: track.name },
     { text: '播放', iconName: 'play', run: () => (scope ? playCollection(scope, index) : player.playTrack(track, [track], 0)) },
     { text: '下一首播放', iconName: 'plus', run: () => addQueueWithToast(track) },
-    { text: faved ? '取消收藏' : '收藏', iconName: faved ? 'heart-fill' : 'heart', on: faved, run: () => { store.toggleFav(track); window.dispatchEvent(new CustomEvent('guman:favchange')); } },
+    { text: faved ? '取消收藏' : '收藏', iconName: faved ? 'heart-fill' : 'heart', on: faved, run: () => { store.toggleFav(track); window.dispatchEvent(new CustomEvent('guman:favchange')); if (onReRender) onReRender(); } },
     { sep: true },
+    ...(track.source === 'local' ? [] : [{
+      text: '换源播放 / 其他版本', iconName: 'refresh', run: () => openAlternativeMenu(track, index, pos, scope),
+    }]),
     { text: '加入歌单…', iconName: 'sheet', run: () => openAddToSheetDialog(track, pos) },
   ];
   store.getSheets().slice(0, 6).forEach((s) => items.push({
@@ -1276,6 +1381,71 @@ function openTrackMenu(track, index, pos, { scope = null, onRemove = null, remov
   }
   if (onRemove) items.push({ sep: true }, { text: removeTitle, iconName: 'trash', danger: true, run: () => onRemove(track, index) });
   openMenu(pos.x, pos.y, items);
+}
+
+/** 换源菜单：先用行内 sources[]，没有再跨平台召回 */
+async function openAlternativeMenu(track, index, pos, scope) {
+  const selfKey = `${track.platform || ''}:${track.platformId || track.id || ''}`;
+  let candidates = (Array.isArray(track.sources) ? track.sources : [])
+    .filter((s) => s && `${s.platform || ''}:${s.platformId || s.id || ''}` !== selfKey);
+
+  if (!candidates.length) {
+    toast('正在查找其他平台的同一首歌…', 1800);
+    try {
+      const r = await api.platformAlternatives({
+        platform: track.platform || 'wy',
+        name: track.name,
+        artist: track.artist,
+        duration: track.duration,
+      });
+      candidates = r.list || [];
+    } catch (e) {
+      toast('查找失败：' + (e.message || '接口不可用'), 4000, 'error');
+      return;
+    }
+  }
+  if (!candidates.length) {
+    toast('没有找到其他平台的同一首歌', 3000);
+    return;
+  }
+
+  const items = [{ label: `${track.name} · 其他来源` }];
+  candidates.slice(0, 12).forEach((c) => {
+    const plat = PLATFORM_LABELS[c.platform] || c.platform || '未知平台';
+    const ver = c.variant ? ` [${c.variant}]` : '';
+    items.push({
+      text: `${plat} · ${c.name}${ver} · ${fmtMs(c.duration || 0)}`,
+      run: () => switchToSource(track, c),
+    });
+  });
+  openMenu(pos.x, pos.y, items);
+}
+
+/** 切换到指定来源并立即播放；原曲与其他来源保留为兜底链 */
+function switchToSource(track, cand) {
+  const next = normalizePlatformTrack(cand);
+  const seen = new Set();
+  next.sources = [cand, ...(Array.isArray(track.sources) ? track.sources : []), track]
+    .filter((s) => s && s.name)
+    .filter((s) => {
+      const k = `${s.platform || ''}:${s.platformId || s.id || ''}`;
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    })
+    .map((s) => (s === cand ? next : normalizePlatformTrack(s)));
+  next.merged = next.sources.length > 1;
+  next.sourceCount = next.sources.length;
+
+  const queue = Array.isArray(player.queue) ? player.queue.slice() : [];
+  const qi = queue.findIndex((q) => trackKey(q) === trackKey(track));
+  if (qi >= 0) {
+    queue[qi] = next;
+    player.playTrack(next, queue, qi);
+  } else {
+    player.playTrack(next, [next], 0);
+  }
+  toast(`已切换到 ${PLATFORM_LABELS[next.platform] || next.platform} 音源`);
 }
 
 /* ---------------- 收藏的在线歌单 ---------------- */
@@ -1758,6 +1928,8 @@ player.on('trackchange', (t) => {
   updateNowPlaying(t);
   updateActiveRows();
   renderQueue();
+  const src = $('pbSource');
+  if (src) src.textContent = ''; // 新歌取链完成前不显示上一首的来源
   if ($('np').classList.contains('open')) {
     lastLyricIdx = -1;
     updateLyric(player.audio.currentTime || 0);
@@ -1791,6 +1963,29 @@ player.on('time', (cur, dur) => {
 player.on('lyric', (lines) => renderLyrics(lines));
 // 取链降级提示（QQ → 酷狗同曲）：轻提示，不打断播放
 player.on('notice', (m) => { if (m && m.text) toast(m.text, 4200); });
+// 实际播放来源：播放条小字，透明化「点的是 A 平台，实际用了哪个源」
+player.on('resolved', (info) => updatePlaySource(info));
+
+const RESOLVE_PLATFORM_LABELS = { wy: '网易云', tx: 'QQ 音乐', kg: '酷狗', kw: '酷我', mg: '咪咕', qs: '汽水' };
+const RESOLVE_KIND_LABELS = {
+  source: '自定义音源',
+  'kugou-native': '原生', 'kuwo-native': '原生', 'qq-native': '原生', 'wy-native': '原生',
+  'kugou-fallback': '同曲兜底', 'kugou-loose': '同曲兜底', 'kugou-alt': '同曲兜底',
+  'kuwo-fallback': '同曲兜底', 'wy-fallback': '同曲兜底',
+};
+function updatePlaySource(info) {
+  const elSrc = $('pbSource');
+  if (!elSrc || !info) return;
+  const plat = RESOLVE_PLATFORM_LABELS[info.sourcePlatform] || '';
+  const kind = RESOLVE_KIND_LABELS[info.from] || '';
+  const text = [plat, kind].filter(Boolean).join(' · ');
+  elSrc.textContent = text ? `实际播放：${text}` : '';
+  if (info.matched && info.matched.name) {
+    elSrc.title = `实际播放：${info.matched.name} · ${info.matched.artist || '未知艺人'}`;
+  } else {
+    elSrc.title = '实际播放来源';
+  }
+}
 player.on('error', (m) => {
   toast('⚠ ' + m, 6500, 'error');
   // 播放条同步进入错误态（标题变红），错过 toast 也能看见
