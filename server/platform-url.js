@@ -403,7 +403,10 @@ async function resolvePlatformUrl({ platform, musicInfo = {}, name, artist, dura
       }
     }
   } else {
-    throw new Error(`不支持的平台：${platform}`);
+    // 咪咕 / 汽水等平台没有原生取链（完全交由洛雪音源），此处静默跳过，
+    // 不计入平台健康度，也不污染前端错误提示
+    lastErr = new Error(`${platform} 平台无原生取链（请通过自定义音源播放）`);
+    lastErr.soft = true;
   }
 
   if (!result) {

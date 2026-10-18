@@ -10,7 +10,7 @@
 
 [![Version](https://img.shields.io/badge/version-1.2.4-ff6a2c?style=flat-square)](https://github.com/kedamano/Lonely-Guy-Music/releases)
 [![Electron](https://img.shields.io/badge/Electron-44-47848F?style=flat-square&logo=electron&logoColor=white)](https://www.electronjs.org/)
-[![Tests](https://img.shields.io/badge/tests-200%20checks-passing-3fb950?style=flat-square)](#-ui-回归测试)
+[![Tests](https://img.shields.io/badge/tests-215%20checks-passing-3fb950?style=flat-square)](#-ui-回归测试)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-8957e5?style=flat-square)](https://github.com/kedamano/Lonely-Guy-Music/releases)
 [![License](https://img.shields.io/badge/license-MIT-c9d1d9?style=flat-square)](LICENSE)
 [![i18n](https://img.shields.io/badge/语言-简体%20%7C%20繁體%20%7C%20EN-ff6a2c?style=flat-square)](#-界面语言)
@@ -303,7 +303,7 @@ QQ / 酷狗曲目的播放地址不走网易云，也不强依赖音源脚本，
 
 ## 🧪 UI 回归测试
 
-基于 Playwright 的真实交互回归（共 **200 项断言**）：
+基于 Playwright 的真实交互回归（共 **215 项断言**）：
 
 ```bash
 npm start                        # 或 ENABLE_NCM=0 node server/index.js
@@ -313,6 +313,7 @@ node scripts/proxy-check.js      # 12 项代理机制单测
 node scripts/search-guide-check.js # 19 项搜索引导与多语言检查
 node scripts/platform-url-check.js # 14 项多平台取链（匹配打分 + 酷狗直链 + QQ 兜底）
 node scripts/version-check.js     # 5 项版本号契约（主进程/渲染层不重复加 v）
+node scripts/source-search-check.js # 15 项咪咕/汽水搜索源（委托洛雪音源 + 无源报错）
 npx electron scripts/tray-check.js # 5 项托盘图标（ICO 空图回归 + 真实托盘坐标）
 npx electron scripts/cache-check.js # 7 项磁盘缓存（写入 → 统计 → 清理 → 幂等）
 node scripts/cache-e2e.js         # 7 项真机存储区验证（需图形界面，走完整 IPC）
@@ -328,7 +329,7 @@ node scripts/cache-e2e.js         # 7 项真机存储区验证（需图形界面
 - [x] **歌单云同步 / 账号登录**：扫码 + 手机验证码 + 邮箱密码，云歌单直接播放
 - [x] **macOS / Linux 安装包**：dmg / zip / AppImage / deb，由 GitHub Actions 三平台矩阵构建
 - [x] **音效链扩展**：空间音频（M/S 加宽 + 卷积混响 + 压缩）与 5 套场景预设
-- [ ] 咪咕 / 汽水搜索源接入
+- [x] 咪咕 / 汽水搜索源接入（搜索与取链同走洛雪音源；需先导入支持其搜索的音源）
 - [ ] 歌单双向编辑（在客户端内增删云端歌单）
 
 已支持 ✅：应用内自动更新（`electron-updater` + GitHub Releases 源，发布新版本后启动即提示）

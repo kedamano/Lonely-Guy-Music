@@ -73,7 +73,7 @@ export function trackKey(t) {
 }
 
 // 多平台搜索结果在曲目行上标注来源，避免全部显示成「网易云」
-export const PLATFORM_LABELS = { wy: '网易云', tx: 'QQ 音乐', kg: '酷狗' };
+export const PLATFORM_LABELS = { wy: '网易云', tx: 'QQ 音乐', kg: '酷狗', mg: '咪咕', qs: '汽水' };
 
 /* ---------------- 封面 ---------------- */
 // 封面统一走同源代理：绕过防盗链/混合内容，与音频同一通道

@@ -14,7 +14,7 @@
  *
  * 网络：复用 source-manager 的 requestAsync，遵循用户在设置里配置的代理（默认直连）。
  */
-const { requestAsync } = require('./source-manager');
+const { requestAsync, resolveSearch } = require('./source-manager');
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 const TIMEOUT = 12000;
@@ -23,10 +23,20 @@ const PLATFORMS = {
   wy: { key: 'wy', label: '网易云音乐', searchable: true, playlist: true },
   tx: { key: 'tx', label: 'QQ 音乐', searchable: true, playlist: false },
   kg: { key: 'kg', label: '酷狗音乐', searchable: true, playlist: false },
+  // 咪咕 / 汽水：官方搜索接口已加签名/登录态，汽水更完全闭源，没有可公开访问的搜索入口。
+  // 因此搜索与取链走同一条路——委托给已导入的洛雪音源脚本（source-manager.resolveSearch）。
+  mg: { key: 'mg', label: '咪咕音乐', searchable: true, playlist: false, viaSource: true },
+  qs: { key: 'qs', label: '汽水音乐', searchable: true, playlist: false, viaSource: true },
 };
 
 function platformList() {
-  return Object.values(PLATFORMS).map((p) => ({ key: p.key, label: p.label, playlist: p.playlist }));
+  return Object.values(PLATFORMS).map((p) => ({
+    key: p.key,
+    label: p.label,
+    playlist: !!p.playlist,
+    searchable: !!p.searchable,
+    viaSource: !!p.viaSource,
+  }));
 }
 
 async function getJson(url, headers = {}) {
@@ -154,6 +164,35 @@ async function searchKg(keyword, page, limit) {
   return { list, total: total || (page * limit + (list.length >= limit ? limit : 0)), hasMore: !!total ? page * limit < total : list.length >= limit };
 }
 
+// 洛雪音源 search 返回的原始曲目 → 统一曲目结构（与 tx/kg 搜索同构）
+function normalizeFromSource(it, platform) {
+  const name = String(it.name || it.songName || '');
+  const singer = it.singer;
+  const artist = Array.isArray(singer)
+    ? singer.filter(Boolean).join('/')
+    : String(singer || it.artist || '');
+  const id = String(
+    it.songmid || it.songId || it.hash || it.id
+    || (it.musicInfo && (it.musicInfo.copyrightId || it.musicInfo.songId || it.musicInfo.id)) || ''
+  );
+  const album = String(it.album || it.albumName || '');
+  const pic = String(it.img || it.albumPic || it.pic || '');
+  const sec = Number(it.interval || 0);
+  return {
+    id: `${platform}:${id}`,
+    platform,
+    platformId: id,
+    name: name || '未知曲目',
+    artist: artist || '未知艺人',
+    album,
+    albumPic: pic,
+    duration: sec * 1000,
+    playable: true,
+    // musicInfo 原样保留：取链时直接回传给洛雪音源（来源与去向是同一份脚本）
+    musicInfo: it.musicInfo || it,
+  };
+}
+
 // ============== 对外入口 ==============
 
 const SEARCHERS = { tx: searchTx, kg: searchKg };
@@ -166,6 +205,15 @@ async function searchPlatform(platform, keyword, page = 1, limit = 30) {
   if (!kw) return { list: [], total: 0, page, limit, platform: key, hasMore: false };
   const p = Math.max(1, Number(page) || 1);
   const n = Math.min(60, Math.max(1, Number(limit) || 30));
+
+  // 咪咕 / 汽水等无公开搜索接口的平台：委托洛雪音源脚本完成搜索
+  if (PLATFORMS[key].viaSource) {
+    const r = await resolveSearch({ sourcePlatform: key, keyword: kw, page: p, limit: n });
+    const list = (r.list || []).map((it) => normalizeFromSource(it, key)).filter((t) => t.name);
+    const hasMore = list.length >= n;
+    return { list, total: p * n + (hasMore ? n : 0), hasMore, page: p, limit: n, platform: key };
+  }
+
   const r = await SEARCHERS[key](kw, p, n);
   return { ...r, page: p, limit: n, platform: key };
 }

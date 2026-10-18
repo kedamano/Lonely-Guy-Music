@@ -365,6 +365,7 @@ const search = {
 // 平台清单（后端 /api/platform/list 为准，失败回退内置，保证离线也能用界面）
 const PLATFORM_FALLBACK = [
   { key: 'wy', label: '网易云' }, { key: 'tx', label: 'QQ 音乐' }, { key: 'kg', label: '酷狗' },
+  { key: 'mg', label: '咪咕' }, { key: 'qs', label: '汽水' },
 ];
 let platformOptions = PLATFORM_FALLBACK.slice();
 let platformLoaded = false;
@@ -431,7 +432,7 @@ function setSearchPlatform(key) {
 
 function renderSearch() {
   view.innerHTML = '';
-  view.appendChild(heading('SEARCH', '搜索', '多平台搜索：网易云 / QQ 音乐 / 酷狗，输入即搜，回车立即执行。'));
+  view.appendChild(heading('SEARCH', '搜索', '多平台搜索：网易云 / QQ 音乐 / 酷狗 / 咪咕 / 汽水，输入即搜，回车立即执行。咪咕与汽水需先在 设置 → 自定义源管理 导入支持其搜索的洛雪音源。'));
   const input = el('input', {
     id: 'searchInput', type: 'text', placeholder: '想听点什么？歌曲 / 歌单 / 艺人',
     autocomplete: 'off', spellcheck: 'false',

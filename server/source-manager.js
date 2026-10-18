@@ -115,10 +115,14 @@ function normalizeSources(sources) {
   if (!sources || typeof sources !== 'object') return out;
   for (const [key, val] of Object.entries(sources)) {
     if (!VALID_SOURCES.has(key) && key !== 'local') continue;
+    // 允许音源声明 search / lyric / pic 等能力；过滤掉未知 action，空则回退到 musicUrl
+    const rawActions = Array.isArray(val.actions) ? val.actions : ['musicUrl'];
+    const ALLOWED_ACTIONS = ['musicUrl', 'search', 'lyric', 'pic'];
+    const actions = rawActions.filter((a) => ALLOWED_ACTIONS.includes(a));
     out[key] = {
       name: val.name || key,
       type: val.type || 'music',
-      actions: Array.isArray(val.actions) ? val.actions : ['musicUrl'],
+      actions: actions.length ? actions : ['musicUrl'],
       qualitys: Array.isArray(val.qualitys) ? val.qualitys.filter((q) => VALID_QUALITIES.has(q)) : [],
     };
   }
@@ -764,6 +768,51 @@ async function resolveAction({ sourcePlatform, action, musicInfo, quality, sourc
   throw new Error(`已尝试 ${attempts.length} 个音源均失败：${detail}${more}`);
 }
 
+/**
+ * 平台搜索（委托给洛雪音源脚本实现）。
+ *
+ * 咪咕(mg) / 汽水(qs) 等平台没有可公开访问的官方搜索接口（官方接口已加签名/登录态，
+ * 汽水更是完全闭源），因此搜索与取链走同一条路——交给用户导入的洛雪音源脚本。
+ * 脚本通过 lx.on('request') 响应 action === 'search'，返回曲目数组。
+ *
+ * @param {object} o
+ * @param {string} o.sourcePlatform  wy/tx/kg/kw/mg/qs/...
+ * @param {string} o.keyword
+ * @param {number} o.page
+ * @param {number} o.limit
+ * @returns {Promise<{list: Array, sourceId: string, platform: string}>}
+ */
+async function resolveSearch({ sourcePlatform, keyword, page = 1, limit = 30 }) {
+  if (!VALID_SOURCES.has(sourcePlatform)) throw new Error(`不支持的平台: ${sourcePlatform}`);
+  const records = Array.from(registry.values()).filter((r) => r.enabled && r.inited && !r.error);
+  const attempts = [];
+
+  for (const rec of records) {
+    const src = rec.sources[sourcePlatform];
+    if (!src || !Array.isArray(src.actions) || !src.actions.includes('search')) continue;
+    const handler = rec.handlers.request;
+    if (typeof handler !== 'function') continue;
+
+    try {
+      // 洛雪协议搜索：info.keywork（注意是 keywork，协议里的拼写）
+      const result = await handler({ source: sourcePlatform, action: 'search', info: { keywork: keyword, page, limit } });
+      if (Array.isArray(result) && result.length) {
+        return { list: result, sourceId: rec.id, platform: sourcePlatform };
+      }
+      attempts.push({ id: rec.meta.name, err: '无结果' });
+    } catch (e) {
+      attempts.push({ id: rec.meta.name, err: e.message });
+    }
+  }
+
+  if (!attempts.length) {
+    throw new Error(`没有支持 ${sourcePlatform} 搜索的可用音源（请到 设置 → 自定义源管理 导入支持该平台搜索的音源）`);
+  }
+  const detail = attempts.slice(0, 3).map((a) => `${a.id}（${a.err}）`).join('；');
+  const more = attempts.length > 3 ? ` 等 ${attempts.length} 个` : '';
+  throw new Error(`已尝试 ${attempts.length} 个音源均失败：${detail}${more}`);
+}
+
 async function resolveMusicUrl(opts) {
   return resolveAction({ ...opts, action: 'musicUrl' });
 }
@@ -778,6 +827,7 @@ module.exports = {
   setProxy,
   getConfig,
   resolveMusicUrl,
+  resolveSearch,
   resolveAction,
   requestAsync,
   QUALITY_ORDER,
