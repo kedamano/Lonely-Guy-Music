@@ -8,7 +8,7 @@
 
 在线网易云曲库 · 洛雪自定义音源 · 实时频谱 · 卡拉OK歌词 · 10 段均衡器 · 桌面歌词 · 本地音乐
 
-[![Version](https://img.shields.io/badge/version-1.2.3-ff6a2c?style=flat-square)](https://github.com/kedamano/Lonely-Guy-Music/releases)
+[![Version](https://img.shields.io/badge/version-1.2.4-ff6a2c?style=flat-square)](https://github.com/kedamano/Lonely-Guy-Music/releases)
 [![Electron](https://img.shields.io/badge/Electron-44-47848F?style=flat-square&logo=electron&logoColor=white)](https://www.electronjs.org/)
 [![Tests](https://img.shields.io/badge/tests-200%20checks-passing-3fb950?style=flat-square)](#-ui-回归测试)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-8957e5?style=flat-square)](https://github.com/kedamano/Lonely-Guy-Music/releases)
