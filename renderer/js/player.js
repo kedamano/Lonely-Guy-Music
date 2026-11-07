@@ -33,6 +33,9 @@ export class Player {
     this.sleepTimer = null;
     this._token = 0;
     this._scrobbled = false;
+    this._playRetried = false; // 同一首歌播放失败只允许自动重试一次，避免死循环
+    this._retrying = false;    // 重试进行中：屏蔽 error 事件监听器的重复提示
+    this._reportedFail = false; // 同一首歌的失败提示只报一次（play catch 与 error 事件二选一）
     this._wireAudio();
   }
 
@@ -62,6 +65,7 @@ export class Player {
       this._onEnded();
     });
     this.audio.addEventListener('error', () => {
+      if (this._retrying || this._reportedFail) return; // 重试中或已报过，避免重复弹提示
       if (this.audio.error) {
         const name = this.current?.name ? `《${this.current.name}》` : '';
         this._failWith(`${name}音频加载失败（链接可能已失效），试试下一首`);
@@ -71,11 +75,47 @@ export class Player {
 
   // 播放失败统一入口：提示 + （可选）自动切下一首
   _failWith(msg) {
+    this._reportedFail = true; // 同一首只报一次（play catch 与 error 事件二选一）
     this.emit('loading', false);
     this.emit('error', msg);
     if (store.get('errorAutoNext') && this.queue.length > 1) {
       // 稍等再切，避免错误提示被立刻刷掉
       setTimeout(() => { if (!this.audio.src || this.audio.error) this.next(true); }, 800);
+    }
+  }
+
+  /**
+   * 播放失败自动重试一次：取链成功但拿到的链接在「探测之后、真正播放之前」已失效
+   * （这类短命链接在洛雪音源里很常见，尤其 QQ vkey）。重新取链时：
+   *  - force=true：绕过取链负缓存，强制重新取链 + 重新校验；
+   *  - skipSourceId：跳过刚失败的那一个音源，逼出其它音源 / 跨平台兜底链。
+   * 仅重试一次，避免死循环。
+   */
+  async _retryPlay(track, token) {
+    this._retrying = true;
+    try {
+      const skip = this._resolveMeta && this._resolveMeta.sourceId;
+      const url = await this._resolveUrl(track, token, { retry: true, force: true, skipSourceId: skip });
+      if (token !== this._token) return false;
+      if (!url) return false;
+      this.audio.src = url;
+      await this.audio.play();
+      if (token !== this._token) return false;
+      this._fadeIn();
+      this.emit('loading', false);
+      this._schedulePrefetch(token);
+      if (store.get('rememberProgress') && track.source !== 'local') {
+        const saved = store.getProgress(trackKey(track));
+        if (saved > 0 && saved < (this.duration || Infinity) - 5) {
+          this.audio.currentTime = saved;
+          this.emit('time', saved, this.duration);
+        }
+      }
+      return true;
+    } catch (_) {
+      return false;
+    } finally {
+      this._retrying = false;
     }
   }
 
@@ -262,7 +302,7 @@ export class Player {
       // 1) 自定义音源（用户启用时优先）：能给出 flac/320，质量更好
       if (hasSources) {
         try {
-          const res = await api.resolveMusicUrl(platform, track.musicInfo, q);
+          const res = await api.resolveMusicUrl(platform, track.musicInfo, q, undefined, opts.skipSourceId);
           if (token !== this._token) return null;
           if (res && res.url) {
             const info = {
@@ -290,6 +330,8 @@ export class Player {
           quality: q,
           // 聚合行的其他平台来源：当前平台取链失败时逐个尝试
           alternatives: Array.isArray(track.sources) ? track.sources : [],
+          // 重试时绕过负缓存，强制重新取链 + 校验
+          force: !!opts.force,
         });
         if (token !== this._token) return null;
         if (r && r.url) {
@@ -337,7 +379,7 @@ export class Player {
           interval: track.duration ? Math.round(track.duration / 1000) : 0,
         };
         const q = store.get('sourceQuality') || 'flac';
-        const res = await api.resolveMusicUrl('wy', musicInfo, q);
+        const res = await api.resolveMusicUrl('wy', musicInfo, q, undefined, opts.skipSourceId);
         if (token !== this._token) return null;
         if (res && res.url) return '/api/proxy?url=' + encodeURIComponent(res.url);
       } catch (e) {
@@ -363,6 +405,17 @@ export class Player {
   async _loadLyric(track, token) {
     let lines = [];
     this.lyricTransFrom = '';
+    // 下载而来的本地曲目：歌词已随歌落到本地，读后端按 id 回读的那份
+    if (track.source === 'local' && track.lyricUrl) {
+      try {
+        const r = await fetch(track.lyricUrl).then((x) => (x.ok ? x.json() : null));
+        if (token !== this._token) return;
+        lines = parseLRC(r && r.data && r.data.lyric);
+      } catch (_) { lines = []; }
+      this.lyricLines = lines;
+      this.emit('lyric', lines);
+      return;
+    }
     if (track.source !== 'local') {
       const platform = track.platform || 'wy';
       try {
@@ -420,6 +473,8 @@ export class Player {
 
     this.current = track;
     this._scrobbled = false;
+    this._playRetried = false;
+    this._reportedFail = false;
     store.setQueue(this.queue, this.index);
     this.emit('loading', true);
     this.emit('trackchange', track, this.index);
@@ -469,6 +524,14 @@ export class Player {
         }
       }
     } catch (e) {
+      // 链接在探测之后到真正播放前已失效（洛雪短命链接常见）：自动重试一次换链
+      const code = this.audio.error && this.audio.error.code;
+      if (!this._playRetried && (code === 4 || code === 3)) {
+        this._playRetried = true;
+        this.emit('notice', { text: `《${track.name}》首条链接已失效，正在尝试换源…` });
+        const ok = await this._retryPlay(track, token);
+        if (ok) return;
+      }
       this._failWith(`《${track.name}》播放失败：${translateAudioError(this.audio.error, e)}`);
     }
   }

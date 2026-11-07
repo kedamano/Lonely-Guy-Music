@@ -97,6 +97,22 @@ async function songUrl(id, br = 128000) {
   };
 }
 
+/**
+ * 取歌词原文（下载时顺手落一份 .lrc）。
+ * 只回原始字段，LRC 解析留给调用方——渲染层已有一套解析规则，别在后端造第二套。
+ */
+async function lyric(id) {
+  const j = await getJson(`/lyric?id=${encodeURIComponent(id)}`);
+  const lrc = (j && j.lrc && j.lrc.lyric) || '';
+  const tlyric = (j && j.tlyric && j.tlyric.lyric) || '';
+  if (!lrc.trim()) {
+    const e = new Error('网易云没有返回歌词');
+    e.soft = true;
+    throw e;
+  }
+  return { lrc, tlyric };
+}
+
 module.exports = {
   setNcmBase,
   setNcmEnabled,
@@ -104,4 +120,6 @@ module.exports = {
   isReady,
   searchSongs,
   songUrl,
+  getJson,
+  lyric,
 };

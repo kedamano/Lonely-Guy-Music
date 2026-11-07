@@ -319,7 +319,71 @@ const ZH_TW = {
   网络代理地址: '網路代理地址',
   '输入音源脚本 URL（如 https://…/xxx.js）': '輸入音源腳本 URL（例如 https://…/xxx.js）',
   '音源脚本 URL': '音源腳本 URL', 'URL 需以 http(s):// 开头': 'URL 需以 http(s):// 開頭',
-  清除全部最近搜索: '清除全部最近搜尋', 删除这条记录: '刪除這筆記錄', 大家都在搜: '大家都在搜'};
+  清除全部最近搜索: '清除全部最近搜尋', 删除这条记录: '刪除這筆記錄', 大家都在搜: '大家都在搜',
+  // 账号登录
+  '登录方式': '登入方式', '邮箱地址': '郵箱地址', '请输入正确的手机号': '請輸入正確的手機號',
+  '发送中…': '發送中…', '验证码发送失败': '驗證碼發送失敗', '登录失败': '登入失敗',
+  '打开网易云音乐 App → 我的 → 右上角扫码，确认后自动登录。':
+    '開啟網易雲音樂 App → 我的 → 右上角掃碼，確認後自動登入。',
+  // 播放来源 / 曲目菜单
+  '实际播放来源': '實際播放來源', '自定义音源': '自訂音源', '原生': '原生', '同曲兜底': '同曲兜底',
+  '当前不可用': '目前不可用', '部分平台失败：': '部分平台失敗：', '读取失败': '讀取失敗',
+  '先去音乐馆': '先去音樂館', '未知平台': '未知平台', '音源：': '音源：', '平台：': '平台：',
+  '音源未返回链接': '音源未傳回連結', '平台接口未返回链接': '平台介面未傳回連結',
+  '原曲无免费音源，已切换到同曲其他版本': '原曲無免費音源，已切換到同曲其他版本',
+  '已下载，重新下载': '已下載，重新下載',
+  '正在查找其他平台的同一首歌…': '正在尋找其他平台的同一首歌…',
+  '查找失败：': '尋找失敗：', '没有找到其他平台的同一首歌': '沒有找到其他平台的同一首歌',
+  '未取到账号 UID，请重新登录': '未取得帳號 UID，請重新登入',
+  '「我喜欢的音乐」还是空的': '「我喜歡的音樂」還是空的', '歌曲详情为空': '歌曲詳情為空',
+  '这个文件已经不在本地曲库里了': '這個檔案已經不在本地曲庫裡了',
+  // 下载
+  '下载完成': '下載完成', '排队中': '排隊中', '已在下载目录': '已在下載目錄',
+  '已保存到本地，可离线播放': '已儲存到本地，可離線播放', '已取消': '已取消', '下载失败': '下載失敗',
+  '这首已经在本地了': '這首已經在本地了', '已加入下载队列': '已加入下載佇列',
+  '服务器拒绝了下载请求': '伺服器拒絕了下載請求',
+  '下载路径已更新，已有文件正在/已经迁移': '下載路徑已更新，既有檔案正在／已經搬移',
+  '当前环境不支持打开目录': '目前環境不支援開啟目錄', '打开失败：': '開啟失敗：',
+  '已清除完成的任务': '已清除完成的工作', '清除失败：': '清除失敗：',
+  '下载信息读取失败（不影响播放）': '下載資訊讀取失敗（不影響播放）',
+  '/ 未设配额': '／未設配額', '已删除本地文件': '已刪除本地檔案',
+  '还没有下载过歌曲。在曲目行右键或播放条的下载按钮里保存。':
+    '還沒有下載過歌曲。在曲目列右鍵或播放列的下載按鈕裡儲存。',
+  '把在线歌曲连同歌词、封面落到本地，并登记进本地曲库；断网或上游接口失效时，下载过的歌照样能播、能收藏。':
+    '把線上歌曲連同歌詞、封面儲存到本地，並登記進本地曲庫；斷網或上游介面失效時，下載過的歌照樣能播、能收藏。',
+  '更改目录会把已下载的文件一起搬过去；未设置时保存在用户目录的 downloads 下':
+    '更改目錄會把已下載的檔案一起搬過去；未設定時儲存在使用者目錄的 downloads 下',
+  '读取中…': '讀取中…', '更改目录': '更改目錄', '打开目录': '開啟目錄', '下载配额': '下載配額',
+  '超出配额时自动删除最早下载的歌曲，只删下载目录里由本软件登记的文件':
+    '超出配額時自動刪除最早下載的歌曲，只刪下載目錄裡由本軟體登記的檔案',
+  '同时保存歌词': '同時儲存歌詞',
+  '在歌曲旁边落一份同名的 .lrc，播放时自动读取': '在歌曲旁邊儲存一份同名的 .lrc，播放時自動讀取',
+  '同时保存封面': '同時儲存封面',
+  '存成同名 .jpg，离线时封面不再回退占位图': '存成同名 .jpg，離線時封面不再退回佔位圖',
+  '刷新列表': '重新整理清單', '清除已完成的任务': '清除已完成的工作',
+  // 平台健康
+  '平台健康': '平台健康', '查看平台健康': '檢視平台健康', '本次不再提示': '本次不再提示',
+  '定时探测': '定時探測', '探测间隔': '探測間隔', '不自动': '不自動',
+  '30 分钟': '30 分鐘', '2 小时': '2 小時', '12 小时': '12 小時',
+  '正常': '正常', '受限': '受限', '不可用': '不可用', '未探测': '未探測',
+  '定时探测已关闭': '定時探測已關閉', '故障记录': '故障記錄', '取链': '取鏈', '未知原因': '未知原因',
+  '立即检测全部平台': '立即檢測全部平台', '等待首次探测结果…': '等待首次探測結果…',
+  '平台检测完成': '平台檢測完成', '正在并发探测六个平台，请稍候…': '正在平行探測六個平台，請稍候…',
+  '暂无状态迁移记录': '尚無狀態遷移記錄',
+  '健康状态读取失败（不影响播放）': '健康狀態讀取失敗（不影響播放）',
+  '定时探测各平台的搜索与取链是否能通。非官方接口随时可能变更，这里记录「哪个平台、哪一步、从什么时候开始失败」，播放报错时可以先来这里对照。':
+    '定時探測各平台的搜尋與取鏈是否能通。非官方介面隨時可能變更，這裡記錄「哪個平台、哪一步、從什麼時候開始失敗」，播放報錯時可以先到這裡對照。',
+  '关闭后只在手动检测时探测；离线模式本来就不会探测': '關閉後只在手動檢測時探測；離線模式本來就不會探測',
+  '还没有探测结果。离线模式不会自动探测，可点下方「立即检测」。':
+    '還沒有探測結果。離線模式不會自動探測，可點下方「立即檢測」。',
+  // 存储与缓存
+  '统计中…': '統計中…', '正在读取缓存占用…': '正在讀取快取佔用…',
+  '当前环境不支持缓存统计（仅桌面客户端可用）': '目前環境不支援快取統計（僅桌面客戶端可用）',
+  '统计失败': '統計失敗', '无法读取缓存占用': '無法讀取快取佔用',
+  '已取消缓存上限': '已取消快取上限', '正在清理缓存…': '正在清理快取…',
+  '缓存已清理': '快取已清理', '清理失败：': '清理失敗：',
+  // 其它
+  '已恢复该场景的默认参数': '已恢復該場景的預設參數', '设置失败：': '設定失敗：'};
 
 const EN = {
   // 导航 / 侧栏
@@ -648,7 +712,81 @@ const EN = {
   '输入音源脚本 URL（如 https://…/xxx.js）': 'Enter a source script URL (e.g. https://…/xxx.js)',
   '音源脚本 URL': 'Source script URL', 'URL 需以 http(s):// 开头': 'URL must start with http(s)://',
   清除全部最近搜索: 'Clear all recent searches', 删除这条记录: 'Delete this entry',
-  大家都在搜: 'Trending searches'};
+  大家都在搜: 'Trending searches',
+  // Account sign-in
+  '登录方式': 'Sign-in method', '邮箱地址': 'Email address', '请输入正确的手机号': 'Enter a valid phone number',
+  '发送中…': 'Sending…', '验证码发送失败': 'Failed to send the code', '登录失败': 'Sign-in failed',
+  '打开网易云音乐 App → 我的 → 右上角扫码，确认后自动登录。':
+    'Open the NetEase Music app → Me → scan the code at the top right; you are signed in once you confirm.',
+  // Playback source / track menu
+  '实际播放来源': 'Actual playback source', '自定义音源': 'Custom source', '原生': 'Native',
+  '同曲兜底': 'Same-song fallback', '当前不可用': 'Currently unavailable',
+  '部分平台失败：': 'Some platforms failed: ', '读取失败': 'Failed to load',
+  '先去音乐馆': 'Visit the Music Hall first', '未知平台': 'Unknown platform',
+  '音源：': 'Source: ', '平台：': 'Platform: ',
+  '音源未返回链接': 'The source returned no link', '平台接口未返回链接': 'The platform API returned no link',
+  '原曲无免费音源，已切换到同曲其他版本':
+    'No free source for the original — switched to another version of the same song',
+  '已下载，重新下载': 'Downloaded — download again',
+  '正在查找其他平台的同一首歌…': 'Looking for the same song on other platforms…',
+  '查找失败：': 'Lookup failed: ', '没有找到其他平台的同一首歌': 'No copy of this song found on other platforms',
+  '未取到账号 UID，请重新登录': 'Could not read the account UID — please sign in again',
+  '「我喜欢的音乐」还是空的': '"Liked Music" is still empty', '歌曲详情为空': 'Song details are empty',
+  '这个文件已经不在本地曲库里了': 'This file is no longer in the local library',
+  // Downloads
+  '下载完成': 'Download complete', '排队中': 'Queued', '已在下载目录': 'Already in the download folder',
+  '已保存到本地，可离线播放': 'Saved locally — plays offline', '已取消': 'Cancelled', '下载失败': 'Download failed',
+  '这首已经在本地了': 'This song is already stored locally', '已加入下载队列': 'Added to the download queue',
+  '服务器拒绝了下载请求': 'The server refused the download request',
+  '下载路径已更新，已有文件正在/已经迁移': 'Download folder updated — existing files are being moved',
+  '当前环境不支持打开目录': 'This environment cannot open the folder', '打开失败：': 'Failed to open: ',
+  '已清除完成的任务': 'Finished tasks cleared', '清除失败：': 'Failed to clear: ',
+  '下载信息读取失败（不影响播放）': 'Could not load download info (playback is unaffected)',
+  '/ 未设配额': ' / no quota', '已删除本地文件': 'Local file deleted',
+  '还没有下载过歌曲。在曲目行右键或播放条的下载按钮里保存。':
+    'No downloads yet. Right-click a track row or use the download button on the player bar.',
+  '把在线歌曲连同歌词、封面落到本地，并登记进本地曲库；断网或上游接口失效时，下载过的歌照样能播、能收藏。':
+    'Store online songs locally with their lyrics and cover art, and register them in the local library — '
+    + 'downloaded tracks still play and can be favourited offline or when an upstream API breaks.',
+  '更改目录会把已下载的文件一起搬过去；未设置时保存在用户目录的 downloads 下':
+    'Changing the folder moves existing downloads with it; unset means downloads/ inside your user directory.',
+  '读取中…': 'Loading…', '更改目录': 'Change folder', '打开目录': 'Open folder', '下载配额': 'Download quota',
+  '超出配额时自动删除最早下载的歌曲，只删下载目录里由本软件登记的文件':
+    'Over quota, the oldest downloads are deleted — only files this app registered in the download folder',
+  '同时保存歌词': 'Save lyrics too',
+  '在歌曲旁边落一份同名的 .lrc，播放时自动读取':
+    'Writes a matching .lrc next to the track and loads it automatically while playing',
+  '同时保存封面': 'Save cover art too',
+  '存成同名 .jpg，离线时封面不再回退占位图':
+    'Writes a matching .jpg so offline cover art no longer falls back to the placeholder',
+  '刷新列表': 'Refresh list', '清除已完成的任务': 'Clear finished tasks',
+  // Platform health
+  '平台健康': 'Platform Health', '查看平台健康': 'View platform health', '本次不再提示': 'Hide for now',
+  '定时探测': 'Scheduled probing', '探测间隔': 'Probe interval', '不自动': 'Never',
+  '30 分钟': '30 min', '2 小时': '2 hours', '12 小时': '12 hours',
+  '正常': 'Healthy', '受限': 'Limited', '不可用': 'Down', '未探测': 'Not probed',
+  '定时探测已关闭': 'Scheduled probing is off', '故障记录': 'Incident log', '取链': 'URL',
+  '未知原因': 'unknown reason', '立即检测全部平台': 'Check all platforms now',
+  '等待首次探测结果…': 'Waiting for the first probe…', '平台检测完成': 'Platform check finished',
+  '正在并发探测六个平台，请稍候…': 'Probing six platforms in parallel, one moment…',
+  '暂无状态迁移记录': 'No state changes recorded yet',
+  '健康状态读取失败（不影响播放）': 'Could not load health status (playback is unaffected)',
+  '定时探测各平台的搜索与取链是否能通。非官方接口随时可能变更，这里记录「哪个平台、哪一步、从什么时候开始失败」，播放报错时可以先来这里对照。':
+    'Probes each platform\u2019s search and URL resolution on a schedule. Unofficial APIs change without notice, '
+    + 'so this records which platform, which stage and since when it fails — check here first when playback errors.',
+  '关闭后只在手动检测时探测；离线模式本来就不会探测':
+    'When off, probing runs only on a manual check; offline mode never probes anyway',
+  '还没有探测结果。离线模式不会自动探测，可点下方「立即检测」。':
+    'No probe results yet. Offline mode does not probe automatically — use "Check all platforms now" below.',
+  // Storage & cache
+  '统计中…': 'Measuring…', '正在读取缓存占用…': 'Reading cache usage…',
+  '当前环境不支持缓存统计（仅桌面客户端可用）': 'Cache stats are unavailable here (desktop client only)',
+  '统计失败': 'Measurement failed', '无法读取缓存占用': 'Cache usage unavailable',
+  '清理失败：': 'Failed to clear: ',
+  '已取消缓存上限': 'Cache limit removed', '正在清理缓存…': 'Clearing cache…', '缓存已清理': 'Cache cleared',
+  // Misc
+  '已恢复该场景的默认参数': 'Default parameters restored for this scene',
+  '设置失败：': 'Failed to save: '};
 
 const DICTS = { 'zh-TW': ZH_TW, en: EN };
 

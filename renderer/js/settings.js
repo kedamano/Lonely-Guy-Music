@@ -71,6 +71,23 @@ const NAMINGS = [
   { key: 'name', label: '歌曲名' },
 ];
 
+// 配额交给后端（落盘的清单在后端 userData，渲染层 localStorage 只是界面状态）
+const QUOTAS = [
+  { key: '1024', label: '1 GB' },
+  { key: '4096', label: '4 GB' },
+  { key: '10240', label: '10 GB' },
+  { key: '0', label: '不限制' },
+];
+
+const HEALTH_INTERVALS = [
+  { key: '0', label: '不自动' },
+  { key: '30', label: '30 分钟' },
+  { key: '120', label: '2 小时' },
+  { key: '720', label: '12 小时' },
+];
+
+const HEALTH_LABELS = { ok: '正常', warn: '受限', down: '不可用', unknown: '未探测' };
+
 const SHORTCUTS = [
   ['空格', '播放 / 暂停'],
   ['← / →', '快退 / 快进 5 秒'],
@@ -94,7 +111,7 @@ export class SettingsView {
   async init() {
     this.container.innerHTML = '';
     this.renderSkeleton();
-    await Promise.all([this.load(), this.loadTranslate()]);
+    await Promise.all([this.load(), this.loadTranslate(), this.loadDownload(), this.loadHealth()]);
     // 状态行与占位符是接口回来后才写入的，首屏那次 applyLang 看不到它们
     this.refreshLang();
   }
@@ -260,6 +277,63 @@ export class SettingsView {
     return row;
   }
 
+  // 后端托管的分段行（下载命名/配额、探测间隔）：值不在 localStorage，读写都问接口
+  serverSeg(sec, { label, options, get, set, desc = '' }) {
+    const row = el('div', { class: 'settings__item' });
+    row.appendChild(el('div', { class: 'settings__item-main' }, [
+      el('span', { class: 'settings__item-label', text: label }),
+      desc ? el('div', { class: 'settings__item-desc', text: desc }) : null,
+    ]));
+    const seg = el('div', { class: 'seg', role: 'group', 'aria-label': label });
+    const paint = () => {
+      const cur = String(get() == null ? '' : get());
+      seg.querySelectorAll('.seg__btn').forEach((x) => x.classList.toggle('is-active', x.dataset.val === cur));
+    };
+    options.forEach((o) => {
+      const b = el('button', { class: 'seg__btn', text: o.label, 'data-val': o.key });
+      b.addEventListener('click', async () => {
+        try {
+          await set(o.key);
+          paint();
+          this.onToast(`${label}已更新`);
+        } catch (e) {
+          this.onToast('设置失败：' + e.message);
+        }
+      });
+      seg.appendChild(b);
+    });
+    row.appendChild(seg);
+    sec.appendChild(row);
+    paint();
+    return { seg, paint };
+  }
+
+  serverToggle(sec, { label, desc = '', get, set }) {
+    const row = el('div', { class: 'settings__item' });
+    row.appendChild(el('div', { class: 'settings__item-main' }, [
+      el('span', { class: 'settings__item-label', text: label }),
+      desc ? el('div', { class: 'settings__item-desc', text: desc }) : null,
+    ]));
+    const toggle = el('label', { class: 'toggle' });
+    const cb = el('input', { type: 'checkbox', 'aria-label': label });
+    cb.checked = !!get();
+    cb.addEventListener('change', async () => {
+      try {
+        await set(cb.checked);
+        this.onToast(`${label}已${cb.checked ? '开启' : '关闭'}`);
+      } catch (e) {
+        cb.checked = !cb.checked;
+        this.onToast('设置失败：' + e.message);
+      }
+    });
+    toggle.append(cb, el('span', { class: 'toggle__slider' }));
+    row.appendChild(el('div', { class: 'settings__item-ctrl' }, [toggle]));
+    sec.appendChild(row);
+    const paint = () => { cb.checked = !!get(); };
+    paint();
+    return { cb, paint };
+  }
+
   renderSkeleton() {
     const wrap = el('div', { class: 'settings__wrap' });
     wrap.appendChild(heading('SETTINGS', '设置', '播放、外观、歌词、列表与下载，全部选项即时生效。'));
@@ -416,20 +490,77 @@ export class SettingsView {
     wrap.appendChild(listSet);
 
     /* ---------- 下载设置 ---------- */
-    const down = this.section('下载设置', '把在线歌曲保存到本地，文件名按下方规则生成。');
+    const down = this.section('下载设置', '把在线歌曲连同歌词、封面落到本地，并登记进本地曲库；断网或上游接口失效时，下载过的歌照样能播、能收藏。');
     this.toggleRow(down, { key: 'downloadEnabled', label: '启用下载功能', desc: '在曲目行与歌词页显示下载按钮' });
     const pathRow = el('div', { class: 'settings__item' });
     pathRow.appendChild(el('div', { class: 'settings__item-main' }, [
       el('span', { class: 'settings__item-label', text: '下载路径' }),
-      el('div', { class: 'settings__item-desc', text: '留空则每次下载时询问保存位置' }),
+      el('div', { class: 'settings__item-desc', text: '更改目录会把已下载的文件一起搬过去；未设置时保存在用户目录的 downloads 下' }),
     ]));
-    this.pathVal = el('div', { class: 'settings__pathval', text: store.get('downloadDir') || '未设置（每次询问）' });
-    const pathBtn = el('button', { class: 'btn btn--small', onclick: () => this.onPickDir() }, [icon('folder-plus'), '更改']);
-    const pathClear = el('button', { class: 'btn btn--small', onclick: () => { store.set({ downloadDir: '' }); this.pathVal.textContent = '未设置（每次询问）'; this.onToast('已恢复每次询问'); } }, '恢复询问');
-    pathRow.append(el('div', { class: 'settings__item-ctrl' }, [this.pathVal, pathBtn, pathClear]));
+    this.pathVal = el('div', { class: 'settings__pathval', text: '读取中…' });
+    const pathBtn = el('button', { class: 'btn btn--small', onclick: () => this.onPickDir() }, [icon('folder-plus'), '更改目录']);
+    const pathOpen = el('button', { class: 'btn btn--small', onclick: () => this.onOpenDir() }, [icon('folder'), '打开目录']);
+    pathRow.append(el('div', { class: 'settings__item-ctrl' }, [this.pathVal, pathOpen, pathBtn]));
     down.appendChild(pathRow);
-    this.segRow(down, { key: 'downloadNaming', label: '文件命名方式', options: NAMINGS });
+    this.dlSeg = this.serverSeg(down, {
+      label: '文件命名方式',
+      options: NAMINGS,
+      get: () => this.dlCfg && this.dlCfg.naming,
+      set: async (v) => { this.dlCfg = await api.downloadConfig({ naming: v }); },
+    });
+    this.dlQuota = this.serverSeg(down, {
+      label: '下载配额',
+      options: QUOTAS,
+      get: () => String(this.dlCfg ? this.dlCfg.quotaMb : 4096),
+      set: async (v) => { this.dlCfg = await api.downloadConfig({ quotaMb: Number(v) }); this.loadDownload(); },
+      desc: '超出配额时自动删除最早下载的歌曲，只删下载目录里由本软件登记的文件',
+    });
+    this.dlLyricToggle = this.serverToggle(down, {
+      label: '同时保存歌词', desc: '在歌曲旁边落一份同名的 .lrc，播放时自动读取',
+      get: () => !!(this.dlCfg && this.dlCfg.withLyric),
+      set: async (v) => { this.dlCfg = await api.downloadConfig({ withLyric: v }); },
+    });
+    this.dlCoverToggle = this.serverToggle(down, {
+      label: '同时保存封面', desc: '存成同名 .jpg，离线时封面不再回退占位图',
+      get: () => !!(this.dlCfg && this.dlCfg.withCover),
+      set: async (v) => { this.dlCfg = await api.downloadConfig({ withCover: v }); },
+    });
+    this.dlUsage = el('div', { class: 'settings__desc settings__proxystatus' });
+    down.appendChild(this.dlUsage);
+    this.dlList = el('div', { class: 'settings__list' });
+    down.appendChild(this.dlList);
+    down.appendChild(el('div', { class: 'settings__item-ctrl settings__actions' }, [
+      el('button', { class: 'btn btn--small', onclick: () => this.loadDownload() }, [icon('refresh'), '刷新列表']),
+      el('button', { class: 'btn btn--small', onclick: () => this.onClearDlTasks() }, '清除已完成的任务'),
+    ]));
     wrap.appendChild(down);
+
+    /* ---------- 平台健康 ---------- */
+    const healthSec = this.section('平台健康', '定时探测各平台的搜索与取链是否能通。非官方接口随时可能变更，这里记录「哪个平台、哪一步、从什么时候开始失败」，播放报错时可以先来这里对照。');
+    this.healthToggle = this.serverToggle(healthSec, {
+      label: '定时探测', desc: '关闭后只在手动检测时探测；离线模式本来就不会探测',
+      get: () => !!(this.healthCfg && this.healthCfg.enabled),
+      set: async (v) => { this.healthCfg = await api.healthConfig({ enabled: v }); },
+    });
+    this.healthSeg = this.serverSeg(healthSec, {
+      label: '探测间隔',
+      options: HEALTH_INTERVALS,
+      get: () => String(this.healthCfg ? this.healthCfg.intervalMinutes : 30),
+      set: async (v) => { this.healthCfg = await api.healthConfig({ intervalMinutes: Number(v) }); },
+    });
+    this.healthNote = el('div', { class: 'settings__desc settings__proxystatus', text: '等待首次探测结果…' });
+    healthSec.appendChild(this.healthNote);
+    this.healthList = el('div', { class: 'settings__list' });
+    healthSec.appendChild(this.healthList);
+    healthSec.appendChild(el('div', { class: 'settings__item-ctrl settings__actions' }, [
+      el('button', { class: 'btn btn--small btn--primary', onclick: () => this.onHealthCheck() }, [icon('activity'), '立即检测全部平台']),
+    ]));
+    this.healthLogWrap = el('details', { class: 'settings__details' });
+    this.healthLogWrap.appendChild(el('summary', { text: '故障记录' }));
+    this.healthLog = el('div', { class: 'settings__list' });
+    this.healthLogWrap.appendChild(this.healthLog);
+    healthSec.appendChild(this.healthLogWrap);
+    wrap.appendChild(healthSec);
 
     /* ---------- 存储（磁盘缓存） ---------- */
     const storeSec = this.section('存储', '封面、字体与接口响应会缓存在本地，加快二次加载。清理只删缓存，不影响登录状态、歌单、下载与音源配置。');
@@ -714,12 +845,168 @@ export class SettingsView {
     try {
       const dir = await window.gm.pickDownloadDir();
       if (!dir) return;
-      store.set({ downloadDir: dir });
-      this.pathVal.textContent = dir;
-      this.onToast('下载路径已设置');
+      const cfg = await api.downloadConfig({ dir });
+      this.dlCfg = cfg;
+      this.pathVal.textContent = cfg.activeDir || dir;
+      this.onToast('下载路径已更新，已有文件正在/已经迁移');
+      this.loadDownload();
     } catch (e) {
       this.onToast('选择目录失败：' + e.message);
     }
+  }
+
+  async onOpenDir() {
+    if (!window.gm?.openDownloadDir) return this.onToast('当前环境不支持打开目录');
+    try {
+      const r = await window.gm.openDownloadDir();
+      if (r && r.error) this.onToast('打开失败：' + r.error);
+    } catch (e) { this.onToast('打开失败：' + e.message); }
+  }
+
+  async onClearDlTasks() {
+    try {
+      await api.downloadClear();
+      const d = await api.downloadList();
+      this.applyDownload(d);
+      this.onToast('已清除完成的任务');
+    } catch (e) { this.onToast('清除失败：' + e.message); }
+  }
+
+  async loadDownload() {
+    try {
+      const d = await api.downloadList();
+      this.applyDownload(d);
+    } catch (_) {
+      if (this.dlUsage) this.dlUsage.textContent = '下载信息读取失败（不影响播放）';
+    }
+  }
+
+  applyDownload(d) {
+    this.dlCfg = d.config || this.dlCfg;
+    if (this.pathVal) this.pathVal.textContent = (this.dlCfg && this.dlCfg.activeDir) || '—';
+    [this.dlSeg, this.dlQuota].forEach((s) => s && s.paint && s.paint());
+    [this.dlLyricToggle, this.dlCoverToggle].forEach((s) => s && s.paint && s.paint());
+    if (this.dlUsage) {
+      // bytes 与 quotaMb 单位不同：统一换算成 MB 再展示，超过 1GB 改说 GB
+      const fmtMB = (n) => (n >= 1024 ? `${(n / 1024).toFixed(1)} GB` : `${n.toFixed(1)} MB`);
+      const q = Number(this.dlCfg && this.dlCfg.quotaMb) || 0;
+      const running = (d.tasks || []).filter((t) => t.state === 'downloading' || t.state === 'queued').length;
+      this.dlUsage.textContent = `已下载 ${d.count} 首 · 占用 ${fmtMB((d.bytes || 0) / 1048576)}`
+        + (q ? ` / 配额 ${fmtMB(q)}` : ' / 未设配额')
+        + (running ? ` · ${running} 首正在下载` : '');
+    }
+    if (!this.dlList) return;
+    this.dlList.innerHTML = '';
+    if (!(d.items || []).length) {
+      this.dlList.appendChild(el('div', { class: 'settings__desc', text: '还没有下载过歌曲。在曲目行右键或播放条的下载按钮里保存。' }));
+      return;
+    }
+    d.items.slice(0, 50).forEach((it) => {
+      this.dlList.appendChild(this.itemRow({
+        name: it.name,
+        meta: `${it.artist || ''} · ${(it.size / 1048576).toFixed(1)} MB · ${new Date(it.at).toLocaleDateString()}`
+          + `${it.hasLyric ? ' · 有歌词' : ''}${it.hasCover ? ' · 有封面' : ''}`,
+        actions: [
+          el('button', {
+            class: 'btn btn--small', text: '播放',
+            onclick: () => window.dispatchEvent(new CustomEvent('guman:playlibrary', { detail: { id: it.id } })),
+          }),
+          el('button', {
+            class: 'btn btn--small', text: '删除',
+            onclick: async () => {
+              const ok = window.confirm(`删除《${it.name}》的本地文件？`);
+              if (!ok) return;
+              try {
+                await api.downloadRemove(it.id);
+                await this.loadDownload();
+                window.dispatchEvent(new CustomEvent('guman:librarychange'));
+                this.onToast('已删除本地文件');
+              } catch (e) { this.onToast('删除失败：' + e.message); }
+            },
+          }),
+        ],
+      }));
+    });
+    this.refreshLang();
+  }
+
+  // 后端托管列表的通用一行（下载清单 / 平台状态都用它）
+  itemRow({ name, meta, actions = [], dot = '' }) {
+    const row = el('div', { class: 'itemrow' });
+    if (dot) row.appendChild(el('span', { class: `health-dot is-${dot}` }));
+    row.appendChild(el('div', { class: 'itemrow__main' }, [
+      el('span', { class: 'itemrow__name', text: name }),
+      meta ? el('span', { class: 'itemrow__meta', text: meta }) : null,
+    ]));
+    actions.forEach((a) => row.appendChild(a));
+    return row;
+  }
+
+  async onHealthCheck() {
+    if (this.healthNote) this.healthNote.textContent = '正在并发探测六个平台，请稍候…';
+    try {
+      const r = await api.healthCheck(true);
+      this.health = r;
+      this.renderHealth();
+      this.onToast('平台检测完成');
+    } catch (e) {
+      if (this.healthNote) this.healthNote.textContent = `检测失败：${e.message}`;
+    }
+  }
+
+  async loadHealth() {
+    try {
+      const d = await api.platformHealth();
+      this.health = d;
+      this.renderHealth();
+    } catch (_) {
+      if (this.healthNote) this.healthNote.textContent = '健康状态读取失败（不影响播放）';
+    }
+  }
+
+  renderHealth() {
+    const h = this.health;
+    if (!h) return;
+    this.healthCfg = h.config || this.healthCfg;
+    [this.healthSeg].forEach((s) => s && s.paint && s.paint());
+    if (this.healthToggle) this.healthToggle.paint();
+    if (this.healthNote) {
+      const at = h.lastCycleAt ? new Date(h.lastCycleAt).toLocaleString() : '';
+      this.healthNote.textContent = h.probed
+        ? `上次探测：${at}　正常 ${h.platforms.filter((p) => p.state === 'ok').length} / 受限 ${h.summary.warn} / 不可用 ${h.summary.broken}`
+          + (h.config.enabled ? `　每 ${h.config.intervalMinutes} 分钟自动探测一次` : '　定时探测已关闭')
+        : '还没有探测结果。离线模式不会自动探测，可点下方「立即检测」。';
+    }
+    if (!this.healthList) return;
+    this.healthList.innerHTML = '';
+    (h.platforms || []).forEach((p) => {
+      const stages = p.stages || {};
+      const detail = Object.entries(stages).map(([name, s]) => {
+        const label = name === 'search' ? '搜索' : name === 'url' ? '取链' : name;
+        return `${label}：${s.ok ? `通过${s.detail ? `（${s.detail}）` : ''}` : `失败（${s.error || '未知原因'}）`}`;
+      }).join('　');
+      this.healthList.appendChild(this.itemRow({
+        dot: p.state,
+        name: `${p.label} · ${HEALTH_LABELS[p.state] || p.state}`,
+        meta: `${p.sample ? `探测曲目《${p.sample.name}》　` : ''}`
+          + `${new Date(p.checkedAt).toLocaleString()}　${(p.ms / 1000).toFixed(1)}s`
+          + (p.note ? `　${p.note}` : '')
+          + (p.lastOkAt ? `　上次正常：${new Date(p.lastOkAt).toLocaleString()}` : '')
+          + (detail ? `\n${detail}` : ''),
+      }));
+    });
+    if (this.healthLog) {
+      this.healthLog.innerHTML = '';
+      (h.log || []).slice(0, 20).forEach((e) => {
+        this.healthLog.appendChild(el('div', {
+          class: 'itemrow__meta',
+          text: `${new Date(e.at).toLocaleString()}　${(h.platforms.find((p) => p.key === e.platform) || {}).label || e.platform}`
+            + `　${HEALTH_LABELS[e.from] || e.from} → ${HEALTH_LABELS[e.to] || e.to}${e.reason ? `　${e.reason}` : ''}`,
+        }));
+      });
+      if (!(h.log || []).length) this.healthLog.appendChild(el('div', { class: 'settings__desc', text: '暂无状态迁移记录' }));
+    }
+    this.refreshLang();
   }
 
   renderProxyStatus() {

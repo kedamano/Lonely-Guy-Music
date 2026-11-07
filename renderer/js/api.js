@@ -139,6 +139,9 @@ export const api = {
   // 平台原生取链（酷狗匿名直链 / QQ 登录态或跨平台兜底）
   platformUrl: (payload) => post('/platform/url', payload, 30000),
   platformHealth: () => dataOf(request('/platform/health')),
+  // 主动探测：一次完整探测要并发打六个平台，超时给足
+  healthCheck: (force = false) => post('/platform/health/check', { force }, 95000),
+  healthConfig: (payload) => post('/platform/health/config', payload),
   // 后端内存缓存（封面 LRU / 取链缓存）：设置页存储区展示与清理
   cacheStats: () => dataOf(request('/cache/stats')),
   clearCache: () => post('/cache/clear', {}),
@@ -184,6 +187,15 @@ export const api = {
   libRemove: (id) => post('/library/remove', { id }),
   libMeta: (payload) => post('/library/meta', payload),
 
+  // 托管下载：落盘、进度、附属文件都在后端，渲染层只发曲目信息和候选地址
+  downloadList: () => dataOf(request('/download')),
+  downloadStart: (payload) => post('/download', payload, 20000),
+  downloadConfig: (payload) => post('/download/config', payload),
+  downloadCancel: (id) => post('/download/cancel', { id }),
+  downloadRemove: (id) => post('/download/remove', { id }),
+  downloadClear: () => post('/download/clear', {}),
+  downloadLyric: (id) => dataOf(request('/download/lyric', { id })),
+
   // 音源系统
   sources: () => request('/sources').then((r) => ({ list: r.data, config: r.config })),
   loadSource: (opts) => post('/sources/load', opts, 30000),
@@ -191,8 +203,8 @@ export const api = {
   removeSource: (id) => post('/sources/remove', { id }),
   setQuality: (quality) => post('/sources/quality', { quality }),
   setProxy: (proxy) => post('/sources/proxy', { proxy }),
-  resolveMusicUrl: (sourcePlatform, musicInfo, quality, sourceId) =>
-    post('/sources/resolve', { sourcePlatform, musicInfo, quality, sourceId }, 20000),
+  resolveMusicUrl: (sourcePlatform, musicInfo, quality, sourceId, skipSourceId) =>
+    post('/sources/resolve', { sourcePlatform, musicInfo, quality, sourceId, skipSourceId }, 20000),
   // 音源歌词：非网易云平台（tx/kg）拿不到网易云歌词接口，交给音源脚本解析
   sourceLyric: (sourcePlatform, musicInfo, sourceId) =>
     post('/sources/action', { sourcePlatform, action: 'lyric', musicInfo, sourceId }, 20000),

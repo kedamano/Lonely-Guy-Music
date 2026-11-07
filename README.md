@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/icon.png" width="96" alt="孤男音乐 logo">
+![孤男音乐 logo](docs/icon.png)
 
 # 孤男音乐 · Guman Music
 
@@ -8,14 +8,23 @@
 
 在线网易云曲库 · 洛雪自定义音源 · 实时频谱 · 卡拉OK歌词 · 10 段均衡器 · 桌面歌词 · 本地音乐
 
-[![Version](https://img.shields.io/badge/version-1.3.0-ff6a2c?style=flat-square)](https://github.com/kedamano/Lonely-Guy-Music/releases)
-[![Electron](https://img.shields.io/badge/Electron-44-47848F?style=flat-square&logo=electron&logoColor=white)](https://www.electronjs.org/)
-[![Tests](https://img.shields.io/badge/tests-279%20checks-passing-3fb950?style=flat-square)](#-ui-回归测试)
-[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-8957e5?style=flat-square)](https://github.com/kedamano/Lonely-Guy-Music/releases)
-[![License](https://img.shields.io/badge/license-MIT-c9d1d9?style=flat-square)](LICENSE)
-[![i18n](https://img.shields.io/badge/语言-简体%20%7C%20繁體%20%7C%20EN-ff6a2c?style=flat-square)](#-界面语言)
+![Version](https://img.shields.io/badge/version-1.4.0-ff6a2c?style=flat-square)
 
-[English](README_EN.md) | 简体中文
+
+
+![Electron](https://img.shields.io/badge/Electron-44-47848F?style=flat-square\&logo=electron\&logoColor=white)
+
+![Tests](https://img.shields.io/badge/tests-289%20checks-passing-3fb950?style=flat-square)
+
+![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-8957e5?style=flat-square)
+
+![License](https://img.shields.io/badge/license-MIT-c9d1d9?style=flat-square)
+
+![i18n](https://img.shields.io/badge/语言-简体%20%7C%20繁體%20%7C%20EN-ff6a2c?style=flat-square)
+
+|                         |      |
+| ----------------------- | ---- |
+| [English](README_EN.md) | 简体中文 |
 
 **[⬇️ 下载安装包](#-快速开始)** · **[✨ 功能总览](#-功能总览)** · **[🎮 快捷键](#-全局快捷键)** · **[🧱 架构设计](#-架构设计)** · **[❓ FAQ](#-faq)**
 
@@ -45,7 +54,7 @@
 
 ## 为什么做这个项目
 
-市面上的桌面音乐播放器大多二选一：要么只做「曲库门户」，要么只做「本地播放」。
+市面上的桌面音乐播放器大多二选一：要么只做「曲库门户」，要么只做「本地播放」。  
 孤男音乐想把两边都做到位——
 
 - **曲库侧**：类网易云的发现/音乐馆/搜索体验，配上**洛雪自定义音源系统**，导入社区音源脚本即可全线上搜歌、取链、播放；
@@ -59,44 +68,44 @@
 
 ### 🎵 曲库与播放
 
-| 功能 | 说明 |
-|---|---|
-| 发现 / 音乐馆 / 搜索 | 精选歌单墙、分类浏览、输入即搜（300ms 防抖）+ 回车执行，切页保留关键词与结果 |
-| **多平台搜索** | 一键切换 **聚合 / 网易云 / QQ 音乐 / 酷狗 / 酷我 / 咪咕 / 汽水**，直接按平台检索；聚合搜索把同一首歌合并为一行，标注来源徽标与「N 个来源」，播放失败自动换源；**QQ / 酷狗 / 酷我不配音源也能搜能播，咪咕可原生搜索、播放走跨平台同曲兜底** |
-| 歌单详情 | 一键播放全部 / 随机播放 / 整单加入队列 |
-| 播放控制 | 播放/暂停/上一首/下一首、列表·单曲·顺序三种循环、拖拽进度与音量 |
-| 播放队列 | 抽屉式管理，可增删、跳播，插入位置可选顶部/底部 |
-| 收藏与历史 | 可移除/清空，跨会话持久化，每首歌记住上次播放进度 |
-| **云歌单** | 登录后直接读取账号里的「我喜欢的音乐」与全部云端歌单，点击即播，不占用本机空间 |
-| 分页 | 音乐馆与搜索走服务端分页（每页 30），超长歌单走客户端分页（每页 50） |
+| 功能            | 说明                                                                                                                                        |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| 发现 / 音乐馆 / 搜索 | 精选歌单墙、分类浏览、输入即搜（300ms 防抖）+ 回车执行，切页保留关键词与结果                                                                                                |
+| **多平台搜索**     | 一键切换 **聚合 / 网易云 / QQ 音乐 / 酷狗 / 酷我 / 咪咕 / 汽水**，直接按平台检索；聚合搜索把同一首歌合并为一行，标注来源徽标与「N 个来源」，播放失败自动换源；**QQ / 酷狗 / 酷我不配音源也能搜能播，咪咕可原生搜索、播放走跨平台同曲兜底** |
+| 歌单详情          | 一键播放全部 / 随机播放 / 整单加入队列                                                                                                                    |
+| 播放控制          | 播放/暂停/上一首/下一首、列表·单曲·顺序三种循环、拖拽进度与音量                                                                                                        |
+| 播放队列          | 抽屉式管理，可增删、跳播，插入位置可选顶部/底部                                                                                                                  |
+| 收藏与历史         | 可移除/清空，跨会话持久化，每首歌记住上次播放进度                                                                                                                 |
+| **云歌单**       | 登录后直接读取账号里的「我喜欢的音乐」与全部云端歌单，点击即播，不占用本机空间                                                                                                   |
+| 分页            | 音乐馆与搜索走服务端分页（每页 30），超长歌单走客户端分页（每页 50）                                                                                                     |
 
 ### 🔊 声场体验（桌面端专属）
 
-| 功能 | 说明 |
-|---|---|
-| 🎚 实时频谱 | Web Audio `AnalyserNode` 环形频谱 + 波形，无音频时待机动画 |
-| 🎛 图形均衡器 | 10 段 EQ，多套预设（流行/摇滚/人声/古典/低音增强…），真实作用于音频链路 |
-| 🌌 空间音频 | M/S 矩阵立体声加宽 + 卷积混响 + 低音增强 + 动态压缩，**5 套场景预设**（关闭 / 录音室 / 现场 / 耳机 / 夜间），宽度与混响强度可微调 |
-| 🎤 卡拉OK歌词 | LRC 逐行高亮 + 逐字填充 + 当前行缩放，点击任意行跳转播放 |
-| 🖥 桌面歌词 | 独立无边框透明置顶窗口，三色自定义、字号/加粗/对齐可调、可鼠标穿透 |
-| 💤 睡眠定时 | 到点先淡出再暂停，面板内实时倒计时 |
-| 🎨 歌词页背景 | 封面模糊 / 封面主色提取 / 纯净底色三种模式，任意背景下歌词可读 |
+| 功能        | 说明                                                                               |
+| --------- | -------------------------------------------------------------------------------- |
+| 🎚 实时频谱   | Web Audio `AnalyserNode` 环形频谱 + 波形，无音频时待机动画                                      |
+| 🎛 图形均衡器  | 10 段 EQ，多套预设（流行/摇滚/人声/古典/低音增强…），真实作用于音频链路                                        |
+| 🌌 空间音频   | M/S 矩阵立体声加宽 + 卷积混响 + 低音增强 + 动态压缩，**5 套场景预设**（关闭 / 录音室 / 现场 / 耳机 / 夜间），宽度与混响强度可微调 |
+| 🎤 卡拉OK歌词 | LRC 逐行高亮 + 逐字填充 + 当前行缩放，点击任意行跳转播放                                                |
+| 🖥 桌面歌词   | 独立无边框透明置顶窗口，三色自定义、字号/加粗/对齐可调、可鼠标穿透                                               |
+| 💤 睡眠定时   | 到点先淡出再暂停，面板内实时倒计时                                                                |
+| 🎨 歌词页背景  | 封面模糊 / 封面主色提取 / 纯净底色三种模式，任意背景下歌词可读                                               |
 
 ### 🧰 桌面级能力
 
-| 功能 | 说明 |
-|---|---|
-| 📂 本地音乐 | 拖入或选择文件/文件夹导入 mp3/flac 等，与在线曲库共用同一套播放器与声场 |
-| ⬇️ 下载 | 曲目行与歌词页一键下载，命名规则与目录可配置 |
-| 🪟 迷你模式 | 自定义标题栏 + 真实缩放置顶；系统托盘常驻 |
-| ⌨️ 全局媒体键 | `MediaPlayPause` 等媒体键 + 托盘播放控制 |
-| 🧭 系统媒体会话 | Windows/macOS 媒体面板显示曲目信息，任务栏图标实时显示播放进度 |
-| 🔐 三种登录方式 | 扫码 / 手机号验证码 / 邮箱密码，凭证只落本机后端；登录后歌单、收藏、每日推荐全部可用 |
-| 🌐 三语言界面 | 简体中文 / 繁體中文 / English，切换即时生效 |
-| 🎭 4 套强调色 | 信号琥珀 / 霓虹紫 / 电子青 / 玫红，全站色彩由 CSS `color-mix` 派生，切换无死角 |
-| 🪶 性能友好 | 6 档字号、4 档窗口尺寸、动画可关（低性能设备更流畅） |
-| 💾 存储管理 | 设置页显示磁盘缓存占用，一键清理；超上限（256MB～2GB / 不限）自动裁剪，**只删缓存不动登录与音源配置** |
-| ⚡ 预取下一首 | 开播 3 秒后静默解析下一首并预载前 1.5MB，切歌几乎立刻出声；每首多约 1.5MB 流量，可一键关闭 |
+| 功能        | 说明                                                         |
+| --------- | ---------------------------------------------------------- |
+| 📂 本地音乐   | 拖入或选择文件/文件夹导入 mp3/flac 等，与在线曲库共用同一套播放器与声场                  |
+| ⬇️ 下载     | 曲目行与歌词页一键下载，命名规则与目录可配置                                     |
+| 🪟 迷你模式   | 自定义标题栏 + 真实缩放置顶；系统托盘常驻                                     |
+| ⌨️ 全局媒体键  | `MediaPlayPause` 等媒体键 + 托盘播放控制                             |
+| 🧭 系统媒体会话 | Windows/macOS 媒体面板显示曲目信息，任务栏图标实时显示播放进度                     |
+| 🔐 三种登录方式 | 扫码 / 手机号验证码 / 邮箱密码，凭证只落本机后端；登录后歌单、收藏、每日推荐全部可用              |
+| 🌐 三语言界面  | 简体中文 / 繁體中文 / English，切换即时生效                               |
+| 🎭 4 套强调色 | 信号琥珀 / 霓虹紫 / 电子青 / 玫红，全站色彩由 CSS `color-mix` 派生，切换无死角       |
+| 🪶 性能友好   | 6 档字号、4 档窗口尺寸、动画可关（低性能设备更流畅）                               |
+| 💾 存储管理   | 设置页显示磁盘缓存占用，一键清理；超上限（256MB～2GB / 不限）自动裁剪，**只删缓存不动登录与音源配置** |
+| ⚡ 预取下一首   | 开播 3 秒后静默解析下一首并预载前 1.5MB，切歌几乎立刻出声；每首多约 1.5MB 流量，可一键关闭      |
 
 ### 🛡 可靠性细节
 
@@ -113,12 +122,12 @@
 
 前往 [**Releases**](https://github.com/kedamano/Lonely-Guy-Music/releases) 下载对应平台的安装包：
 
-| 平台 | 文件 | 说明 |
-|---|---|---|
-| Windows x64 | `GumanMusic-x.y.z-x64.exe` | NSIS 安装器 |
-| macOS Intel | `GumanMusic-x.y.z-x64.dmg` | Apple Silicon 用 `-arm64.dmg` |
-| Linux x64 | `GumanMusic-x.y.z-x86_64.AppImage` | 免安装，`chmod +x` 后直接运行 |
-| Debian / Ubuntu | `GumanMusic-x.y.z-amd64.deb` | `sudo dpkg -i` 安装 |
+| 平台              | 文件                                 | 说明                           |
+| --------------- | ---------------------------------- | ---------------------------- |
+| Windows x64     | `GumanMusic-x.y.z-x64.exe`         | NSIS 安装器                     |
+| macOS Intel     | `GumanMusic-x.y.z-x64.dmg`         | Apple Silicon 用 `-arm64.dmg` |
+| Linux x64       | `GumanMusic-x.y.z-x86_64.AppImage` | 免安装，`chmod +x` 后直接运行         |
+| Debian / Ubuntu | `GumanMusic-x.y.z-amd64.deb`       | `sudo dpkg -i` 安装            |
 
 > 安装包未做代码签名：Windows 首次运行 SmartScreen 提示点「更多信息 → 仍要运行」；macOS 需在「系统设置 → 隐私与安全性」放行。
 
@@ -148,28 +157,28 @@ npm run dist:dir    # 仅产出免安装目录
 ## 🖼 界面一览
 
 | 主界面 + 声场面板 | 卡拉OK歌词（封面主色背景） |
-|:---:|:---:|
-| ![声场面板](docs/screenshots/soundstage.png) | ![卡拉OK歌词](docs/screenshots/lyrics-karaoke.png) |
+| :--------: | :------------: |
+|    声场面板    |     卡拉OK歌词     |
 
 | 实时搜索 | 洛雪自定义源管理 |
-|:---:|:---:|
-| ![搜索](docs/screenshots/search.png) | ![音源管理](docs/screenshots/sources.png) |
+| :--: | :------: |
+|  搜索  |   音源管理   |
 
 | 音效场景与空间音频 | 三种登录方式 |
-|:---:|:---:|
-| ![音效场景](docs/screenshots/sound-fx.png) | ![登录](docs/screenshots/login.png) |
+| :-------: | :----: |
+|    音效场景   |   登录   |
 
 ---
 
 ## 🎮 全局快捷键
 
-| 按键 | 功能 | 按键 | 功能 |
-|---|---|---|---|
-| <kbd>空格</kbd> | 播放 / 暂停 | <kbd>/</kbd> | 跳转并聚焦搜索 |
-| <kbd>←</kbd> / <kbd>→</kbd> | 快退 / 快进 5 秒 | <kbd>L</kbd> | 打开歌词浮层 |
-| <kbd>↑</kbd> / <kbd>↓</kbd> | 音量 ±5% | <kbd>M</kbd> | 迷你模式 |
-| <kbd>Q</kbd> | 播放队列 | <kbd>Esc</kbd> | 关闭浮层 / 队列 / 迷你模式 |
-| 媒体键 | 播放/暂停·上一首·下一首 | 托盘菜单 | 播放控制 |
+| 按键        | 功能            | 按键    | 功能               |
+| --------- | ------------- | ----- | ---------------- |
+| `空格`      | 播放 / 暂停       | `/`   | 跳转并聚焦搜索          |
+| `←` / `→` | 快退 / 快进 5 秒   | `L`   | 打开歌词浮层           |
+| `↑` / `↓` | 音量 ±5%        | `M`   | 迷你模式             |
+| `Q`       | 播放队列          | `Esc` | 关闭浮层 / 队列 / 迷你模式 |
+| 媒体键       | 播放/暂停·上一首·下一首 | 托盘菜单  | 播放控制             |
 
 ---
 
@@ -210,6 +219,7 @@ flowchart LR
 3. **音源脚本沙箱** —— 音源脚本来自互联网，在 `vm.runInNewContext` 中执行：只暴露标准 JS 全局 + `lx` API，不提供 `require`/`fs`，HTTP 一律经后端转发。
 
 <details>
+
 <summary><b>📁 项目结构</b>（点击展开）</summary>
 
 ```
@@ -270,24 +280,25 @@ scripts/
 - **网络代理可控**：音源请求**默认直连，不读取系统代理环境变量**（避免本机失效代理拖垮全部音源）；需要时在「设置 → 网络代理」填写，保存即生效。
 
 <details>
+
 <summary><b>🔌 音源 HTTP API</b>（供二次开发，点击展开）</summary>
 
-| 方法 | 说明 |
-|---|---|
-| `GET /api/sources` | 音源列表 + 配置 |
-| `POST /api/sources/load` | 载入音源 `{ path?, url?, code? }` |
-| `POST /api/sources/toggle` | 启用/禁用 `{ id, enabled }` |
-| `POST /api/sources/remove` | 删除音源 `{ id }` |
-| `POST /api/sources/quality` | 设置默认音质 `{ quality }` |
-| `POST /api/sources/proxy` | 设置网络代理 `{ proxy }`，留空 = 恢复直连 |
-| `POST /api/sources/resolve` | 取播放链 `{ sourcePlatform, musicInfo, quality?, sourceId? }` |
-| `POST /api/sources/action` | 通用动作 `{ action: 'musicUrl'/'lyric'/'pic', ... }` |
-| `GET /api/platform/list` | 平台清单（含 `available` / `reason` / `playback`） |
-| `GET /api/platform/search` | 单平台搜索 `{ platform, keywords, page, limit }` |
-| `GET /api/platform/search-all` | 聚合搜索 `{ keywords, page, limit, sources? }`，返回合并行 + `sources[]` |
-| `POST /api/platform/alternatives` | 备选来源 `{ platform, name, artist, duration }`，供「换源播放」 |
-| `POST /api/platform/url` | 平台取链 `{ platform, musicInfo, name, artist, duration, quality, alternatives? }` |
-| `GET /api/cache/stats` · `POST /api/cache/clear` | 缓存统计 / 一键清理（封面、取链、单平台搜索、聚合搜索） |
+| 方法                                               | 说明                                                                             |
+| ------------------------------------------------ | ------------------------------------------------------------------------------ |
+| `GET /api/sources`                               | 音源列表 + 配置                                                                      |
+| `POST /api/sources/load`                         | 载入音源 `{ path?, url?, code? }`                                                  |
+| `POST /api/sources/toggle`                       | 启用/禁用 `{ id, enabled }`                                                        |
+| `POST /api/sources/remove`                       | 删除音源 `{ id }`                                                                  |
+| `POST /api/sources/quality`                      | 设置默认音质 `{ quality }`                                                           |
+| `POST /api/sources/proxy`                        | 设置网络代理 `{ proxy }`，留空 = 恢复直连                                                   |
+| `POST /api/sources/resolve`                      | 取播放链 `{ sourcePlatform, musicInfo, quality?, sourceId? }`                      |
+| `POST /api/sources/action`                       | 通用动作 `{ action: 'musicUrl'/'lyric'/'pic', ... }`                               |
+| `GET /api/platform/list`                         | 平台清单（含 `available` / `reason` / `playback`）                                    |
+| `GET /api/platform/search`                       | 单平台搜索 `{ platform, keywords, page, limit }`                                    |
+| `GET /api/platform/search-all`                   | 聚合搜索 `{ keywords, page, limit, sources? }`，返回合并行 + `sources[]`                 |
+| `POST /api/platform/alternatives`                | 备选来源 `{ platform, name, artist, duration }`，供「换源播放」                            |
+| `POST /api/platform/url`                         | 平台取链 `{ platform, musicInfo, name, artist, duration, quality, alternatives? }` |
+| `GET /api/cache/stats` · `POST /api/cache/clear` | 缓存统计 / 一键清理（封面、取链、单平台搜索、聚合搜索）                                                  |
 
 </details>
 
@@ -296,6 +307,7 @@ scripts/
 ## 🔗 多平台取链策略
 
 QQ / 酷狗 / 酷我 / 咪咕曲目的播放地址不强依赖网易云，也不强依赖音源脚本，而是四级降级：
+
 
 | 顺序 | 环节 | 说明 |
 |---|---|---|
@@ -317,7 +329,7 @@ QQ / 酷狗 / 酷我 / 咪咕曲目的播放地址不强依赖网易云，也不
 
 ## 🧪 UI 回归测试
 
-基于 Playwright 的真实交互回归（共 **279 项断言**）：
+基于 Playwright 的真实交互回归（共 **289 项断言**）：
 
 ```bash
 npm start                        # 或 ENABLE_NCM=0 node server/index.js
@@ -329,6 +341,7 @@ node scripts/platform-search-check.js --offline # 51 项聚合搜索/取链校�
 node scripts/platform-url-check.js # 19 项多平台取链（匹配打分 + 酷狗直链 + 四级兜底）
 node scripts/version-check.js     # 5 项版本号契约（主进程/渲染层不重复加 v）
 node scripts/source-search-check.js # 23 项音源搜索（并行回退 + 能力查询 + 汽水）
+node scripts/lx-url-validate-check.js # 10 项音源取链 URL 校验（坏链拦截 + 换源兜底 + 负缓存）
 npx electron scripts/tray-check.js # 5 项托盘图标（ICO 空图回归 + 真实托盘坐标）
 npx electron scripts/cache-check.js # 7 项磁盘缓存（写入 → 统计 → 清理 → 幂等）
 node scripts/cache-e2e.js         # 7 项真机存储区验证（需图形界面，走完整 IPC）
@@ -345,6 +358,9 @@ node scripts/cache-e2e.js         # 7 项真机存储区验证（需图形界面
 - [x] **macOS / Linux 安装包**：dmg / zip / AppImage / deb，由 GitHub Actions 三平台矩阵构建
 - [x] **音效链扩展**：空间音频（M/S 加宽 + 卷积混响 + 压缩）与 5 套场景预设
 - [x] 咪咕原生搜索；汽水搜索需先导入支持其搜索的洛雪音源
+- [x] **离线下载管理**：在线歌曲连同歌词、封面落盘本地曲库，断网或上游失效照样能播；支持下载路径、命名方式、配额自动清理
+- [x] **平台健康主动探测**：定时探测各平台搜索/取链可用性并持久化，首屏横幅提示「哪个平台从何时开始不可用」，设置页可看状态/故障记录、手动立即检测
+- [x] **音源取链 URL 校验与自动兜底**：取链结果做内容探测，死链/过期链自动切下一音源，全失败转交原生 + 跨平台兜底；播放失败自动换源重试一次
 - [ ] 歌单双向编辑（在客户端内增删云端歌单）
 
 已支持 ✅：应用内自动更新（`electron-updater` + GitHub Releases 源，发布新版本后启动即提示）

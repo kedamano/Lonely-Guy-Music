@@ -344,27 +344,6 @@ ipcMain.handle('dialog:pickDir', async () => {
   return result.canceled ? null : result.filePaths[0] || null;
 });
 
-// 保存下载文件：dir 为空则弹保存对话框；返回保存路径或 null
-ipcMain.handle('download:save', async (_e, { name, dir, data }) => {
-  const { dialog } = require('electron');
-  try {
-    let filePath = dir ? path.join(dir, name) : null;
-    if (!filePath) {
-      const result = await dialog.showSaveDialog(mainWindow, {
-        defaultPath: name,
-        filters: [{ name: '音频', extensions: ['mp3', 'flac', 'm4a', 'wav', 'ogg', 'aac'] }],
-      });
-      if (result.canceled || !result.filePath) return null;
-      filePath = result.filePath;
-    }
-    fs.writeFileSync(filePath, Buffer.from(data));
-    return filePath;
-  } catch (e) {
-    console.error('[download] 保存失败:', e.message);
-    return null;
-  }
-});
-
 /* ---------- 首启用户协议 ---------- */
 // 首次启动展示使用声明与免责条款，同意后写标记文件；直接关窗视为不同意并退出。
 const AGREEMENT_FILE = path.join(app.getPath('userData'), '.agreed');
@@ -436,6 +415,23 @@ function agreementDecide(ok) {
   if (agreementWindow && !agreementWindow.isDestroyed()) agreementWindow.close();
   if (r) r(!!ok);
 }
+
+// 打开下载目录（设置页 → 下载设置）。目录由后端决定（可在 userData/downloads 与用户自选目录间迁移），
+// 所以这里问后端要，而不是自己拼路径。
+ipcMain.handle('shell:openDownloadDir', async () => {
+  try {
+    const port = hostServer && hostServer.getPort ? hostServer.getPort() : null;
+    if (!port) return { error: '后端尚未就绪' };
+    const r = await fetch(`http://127.0.0.1:${port}/api/download`, { signal: AbortSignal.timeout(4000) });
+    const j = await r.json();
+    const dir = j && j.data && j.data.config && j.data.config.activeDir;
+    if (!dir) return { error: '下载目录未配置' };
+    await shell.openPath(dir);
+    return { ok: true, dir };
+  } catch (e) {
+    return { error: e.message };
+  }
+});
 
 // 打开日志目录（设置页 → 关于）
 ipcMain.handle('shell:openLogDir', async () => {

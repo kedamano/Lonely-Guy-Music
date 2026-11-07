@@ -3,7 +3,7 @@ import { store, EQ_FREQS, EQ_PRESETS, EQ_PRESET_LABELS } from './store.js';
 import { api, normalizeTrack, normalizePlaylist } from './api.js';
 import { Player } from './player.js';
 import { createVisualizer } from './visualizer.js';
-import { activeLine } from './lyrics.js';
+import { activeLine, parseLRC } from './lyrics.js';
 import {
   el, icon, hydrateIcons, setIcon, setCover, cover, fmtTime, fmtMs, toast,
   renderPlaylistGrid, renderTrackList, heading, emptyState, trackKey,
@@ -85,7 +85,7 @@ async function reloginMainAccount() {
 function anonBanner() {
   const st = accountState();
   if (anonBarDismissed || !st.loggedIn || !st.user?.anonymous) return null;
-  return el('div', { class: 'anonbar reveal' }, [
+  const banner = el('div', { class: 'anonbar reveal' }, [
     el('div', { class: 'anonbar__txt' }, [
       el('div', { class: 'anonbar__title', text: '当前是网易云游客账号' }),
       el('div', {
@@ -97,15 +97,58 @@ function anonBanner() {
     el('button', { class: 'btn btn--small', onclick: () => reloginMainAccount() }, [icon('user'), '换主账号登录']),
     el('button', {
       class: 'btn-ghost',
-      onclick: (e) => { anonBarDismissed = true; e.currentTarget.remove(); },
+      onclick: () => { anonBarDismissed = true; banner.remove(); },
     }, ['不再提示']),
   ]);
+  return banner;
+}
+
+/* ---------------- 平台健康横幅 ----------------
+ * 非官方接口坏掉是常态。以前用户只能点播放后看一条长得和「这首歌没源」一模一样的报错，
+ * 现在探测结论先落在后端，首屏直接说清「哪个平台从什么时候开始不可用」，并把入口指到设置页。
+ */
+let healthAlert = null;
+let healthDismissed = false;
+
+async function refreshHealth() {
+  const d = await api.platformHealth().catch(() => null);
+  const prev = healthAlert;
+  const next = d && d.alert ? d.alert : null;
+  const changed = JSON.stringify(next) !== JSON.stringify(prev);
+  healthAlert = next;
+  // 换了一个平台坏掉，说明是新的故障，之前「不再提示」不该继续遮住它
+  if (next && (!prev || prev.key !== next.key)) healthDismissed = false;
+  if (changed && currentRoute === 'discover') renderDiscover(routeToken);
+  return d;
+}
+
+function healthBanner() {
+  if (healthDismissed || !healthAlert) return null;
+  const a = healthAlert;
+  const more = a.count > 1 ? tr(`等 ${a.count} 个平台`) : '';
+  const banner = el('div', { class: 'anonbar is-warn reveal' }, [
+    el('div', { class: 'anonbar__txt' }, [
+      el('div', { class: 'anonbar__title', text: `${a.label}${tr('的搜索或取链不可用')}${more}` }),
+      el('div', { class: 'anonbar__desc', text: `${tr('探测时间：')}${new Date(a.since).toLocaleString()}${a.reason ? ` · ${a.reason}` : ''}${tr('；其他平台不受影响，遇到播不出来的歌可以直接换源。')}` }),
+    ]),
+    el('button', {
+      class: 'btn btn--small',
+      onclick: () => { location.hash = '#/settings'; },
+    }, [icon('activity'), '查看平台健康']),
+    el('button', {
+      class: 'btn-ghost',
+      onclick: () => { healthDismissed = true; banner.remove(); },
+    }, ['本次不再提示']),
+  ]);
+  return banner;
 }
 
 async function renderDiscover(token) {
   view.innerHTML = '';
   const ab = anonBanner();
   if (ab) view.appendChild(ab);
+  const hb = healthBanner();
+  if (hb) view.appendChild(hb);
   view.appendChild(heading(
     'DISCOVER', '孤男音乐',
     '把任意设备的扬声器，变成一台声场仪表盘。在线曲库 × 本地音乐 × 实时频谱。',
@@ -1377,7 +1420,10 @@ function openTrackMenu(track, index, pos, { scope = null, onRemove = null, remov
     text: s.name, iconName: 'sheet', on: inSheets.has(s.id), run: () => toggleSheetTrack(s.id, track, s.name),
   }));
   if (track.source !== 'local' && store.get('downloadEnabled')) {
-    items.push({ sep: true }, { text: '下载这首歌', iconName: 'download', run: () => downloadTrack(track) });
+    const got = downloadedSet.has(dlKey(track));
+    items.push({ sep: true }, got
+      ? { text: '已下载，重新下载', iconName: 'refresh', run: () => downloadTrack(track, { overwrite: true }) }
+      : { text: '下载这首歌', iconName: 'download', run: () => downloadTrack(track) });
   }
   if (onRemove) items.push({ sep: true }, { text: removeTitle, iconName: 'trash', danger: true, run: () => onRemove(track, index) });
   openMenu(pos.x, pos.y, items);
@@ -2887,29 +2933,129 @@ function pushDesktopLyric() {
 }
 
 /* ---------- 下载 ---------- */
-// 下载当前歌曲：取同源代理音频流 → 主进程落盘（目录为空则每次询问）
-async function downloadTrack(track) {
-  if (!track) return;
-  if (track.source === 'local') return toast('本地文件可直接在原位置查看');
-  toast(`正在准备下载《${track.name}》…`);
+// 托管下载：交给你后端落盘（音频 + 歌词 + 封面）并登记进本地曲库，断网也能播。
+// 渲染层只负责三件事：解析出播放用的候选地址交给后端、轮询进度、把结果画出来。
+const downloadedSet = new Set();
+const dlKey = (t) => `${t.platform || 'wy'}:${t.id || t.platformId || ''}`;
+// 交给后端的歌词要落回 LRC 时间轴，否则下载后只剩一堆纯文本行
+const lrcStamp = (sec) => `${String(Math.floor((sec || 0) / 60)).padStart(2, '0')}:${String(Math.floor((sec || 0) % 60)).padStart(2, '0')}.${String(Math.round(((sec || 0) % 1) * 100)).padStart(2, '0')}`;
+let dlPanel = null;
+let dlTimer = null;
+
+function ensureDlPanel() {
+  if (dlPanel && document.body.contains(dlPanel)) return dlPanel;
+  dlPanel = el('div', { class: 'dlpanel', role: 'status', 'aria-live': 'polite' });
+  document.body.appendChild(dlPanel);
+  return dlPanel;
+}
+
+async function refreshDownloaded() {
   try {
-    // 先解析真实播放地址（音源优先，失败降级官方）
-    const url = await player._resolveUrl(track, player._token);
-    if (!url) throw new Error('无法获取该歌曲的下载地址');
-    const res = await fetch(url);
-    if (!res.ok) throw new Error('下载失败（HTTP ' + res.status + '）');
-    const buf = new Uint8Array(await res.arrayBuffer());
-    const naming = store.get('downloadNaming') || 'name-artist';
-    const safeName = (s) => String(s || '').replace(/[\\/:*?"<>|]/g, '_').slice(0, 80);
-    let base = safeName(track.name);
-    if (naming === 'name-artist') base += ' - ' + safeName(track.artist);
-    else if (naming === 'artist-name') base = safeName(track.artist) + ' - ' + base;
-    const ext = (url.match(/\.(flac|mp3|m4a|ogg|wav|aac)(\?|$)/i) || [])[1] || 'mp3';
-    const name = `${base}.${ext}`;
-    const saved = await window.gm?.saveDownload?.({ name, dir: store.get('downloadDir') || '', data: Array.from(buf) });
-    if (saved) toast(`已保存到：${saved}`, 4000);
+    const d = await api.downloadList();
+    downloadedSet.clear();
+    (d.items || []).forEach((it) => downloadedSet.add(it.key || ''));
+    applyDownloadTasks(d.tasks || []);
+    return d;
+  } catch (_) { return null; }
+}
+
+/** 任务态写进面板；全部结束时顺带刷新「已下载」标记 */
+function applyDownloadTasks(tasks) {
+  const panel = ensureDlPanel();
+  const active = tasks.filter((t) => t.state === 'queued' || t.state === 'downloading');
+  const recent = tasks.filter((t) => t.state !== 'queued' && t.state !== 'downloading').slice(0, 3);
+  if (!active.length && !recent.length) { panel.hidden = true; return; }
+  panel.hidden = false;
+  panel.innerHTML = '';
+  panel.appendChild(el('div', { class: 'dlpanel__head' }, [
+    el('span', { text: active.length ? tr(`正在下载 ${active.length} 首`) : tr('下载完成') }),
+    el('button', {
+      class: 'dlpanel__close', type: 'button', 'aria-label': tr('关闭'), title: tr('关闭'),
+      onclick: () => { panel.hidden = true; },
+    }, '×'),
+  ]));
+  tasks.slice(0, 6).forEach((t) => {
+    const ratio = t.total ? Math.min(1, t.received / t.total) : 0;
+    const row = el('div', { class: `dlrow is-${t.state}` }, [
+      el('div', { class: 'dlrow__main' }, [
+        el('span', { class: 'dlrow__name', text: t.name }),
+        el('span', { class: 'dlrow__state', text: dlStateText(t) }),
+      ]),
+      el('div', { class: 'dlrow__bar' }, [el('i', { style: `width:${Math.round(ratio * 100)}%` })]),
+    ]);
+    if (t.state === 'downloading' || t.state === 'queued') {
+      row.appendChild(el('button', {
+        class: 'dlrow__cancel', type: 'button', title: tr('取消'), onclick: () => api.downloadCancel(t.id).catch(() => {}),
+      }, tr('取消')));
+    }
+    panel.appendChild(row);
+  });
+}
+
+function dlStateText(t) {
+  const mb = (n) => (n / 1048576).toFixed(1);
+  if (t.state === 'downloading') return t.total ? `${Math.round((t.received / t.total) * 100)}% · ${mb(t.received)}/${mb(t.total)} MB` : `${mb(t.received)} MB`;
+  if (t.state === 'queued') return tr('排队中');
+  if (t.state === 'done') return t.exists ? tr('已在下载目录') : tr('已保存到本地，可离线播放');
+  if (t.state === 'canceled') return tr('已取消');
+  return t.error || tr('下载失败');
+}
+
+function pollDownloadTasks() {
+  if (dlTimer) return;
+  dlTimer = setInterval(async () => {
+    const d = await api.downloadList().catch(() => null);
+    if (!d) { clearInterval(dlTimer); dlTimer = null; return; }
+    applyDownloadTasks(d.tasks || []);
+    const active = (d.tasks || []).some((t) => t.state === 'queued' || t.state === 'downloading');
+    if (!active) {
+      clearInterval(dlTimer);
+      dlTimer = null;
+      await refreshDownloaded();
+      // 下载完的歌已进本地曲库：清单要强制回源，列表里的「本地」标记也要跟着变
+      await library.reload().catch(() => {});
+      window.dispatchEvent(new CustomEvent('guman:librarychange'));
+      if (currentRoute === 'mine') renderMine();
+    }
+  }, 700);
+}
+
+async function downloadTrack(track, { overwrite = false } = {}) {
+  if (!track) return;
+  if (!store.get('downloadEnabled')) return toast(tr('下载功能已在设置 → 下载设置中关闭'), 3000, 'error');
+  if (track.source === 'local') return toast(tr('这首已经在本地了'), 2600);
+  let url = '';
+  try {
+    // 用播放器正在走的那条链（带缓存，命中时几乎瞬时），不重复解析一次
+    url = await player._resolveUrl(track, player._token, { quiet: true });
   } catch (e) {
-    toast('下载失败：' + (e.message || '网络异常'), 5000, 'error');
+    return toast(tr('下载失败：') + (e.message || tr('无法获取该歌曲的下载地址')), 5000, 'error');
+  }
+  if (!url) return toast(tr('无法获取该歌曲的下载地址'), 3500, 'error');
+  toast(tr('已加入下载队列'), 1600);
+  try {
+    await api.downloadStart({
+      quality: store.get('sourceQuality') === 'flac' ? 'flac' : (store.get('sourceQuality') || '320'),
+      overwrite,
+      // 歌词文本随曲目一起交给后端：后端取不到歌词时（离线示例/无音源）仍有这一份可落
+      track: {
+        id: track.id,
+        name: track.name,
+        artist: track.artist,
+        album: track.album || '',
+        duration: track.duration || 0,
+        platform: track.platform || 'wy',
+        musicInfo: track.musicInfo || null,
+        albumPic: track.albumPic || '',
+        lyricText: (player.current && trackKey(player.current) === trackKey(track) && player.lyricLines.length)
+          ? player.lyricLines.map((l) => `[${lrcStamp(l.time)}]${l.text}`).join('\n') : '',
+      },
+      candidates: [url],
+    });
+    pollDownloadTasks();
+    await api.downloadList().then((d) => applyDownloadTasks(d.tasks || [])).catch(() => {});
+  } catch (e) {
+    toast(tr('下载失败：') + (e.message || tr('服务器拒绝了下载请求')), 5000, 'error');
   }
 }
 
@@ -2917,6 +3063,7 @@ async function downloadTrack(track) {
 // 模式徽标：NCM 子进程探测最多需要 90s，启动时查一次会永远停在"离线示例"，
 // 因此短轮询刷新，探测完成后自动变为"在线曲库"（绿点）。
 let lastOnline = null;
+let modeTicks = 0;
 async function refreshMode() {
   const m = await api.mode().catch(() => null);
   const badge = $('apiMode');
@@ -2926,6 +3073,8 @@ async function refreshMode() {
   badge.title = m.online ? '已连接网易云曲库' : '网易云接口暂不可达，使用内置示例曲库';
   // 上游从不可达变为可达时，账号登录态与「能否登录」都要跟着刷新
   if (lastOnline !== m.online) { lastOnline = m.online; refreshAccount(); }
+  // 平台健康借这条已经在跑的轮询顺带刷新，不另开定时器（3s × 10 = 30s）
+  if (++modeTicks % 10 === 0) refreshHealth();
 }
 
 async function boot() {
@@ -2935,6 +3084,9 @@ async function boot() {
   setInterval(refreshMode, 3000);
   // 先恢复本地曲库清单，否则收藏/历史里的本地曲目会在首屏被误判为已失效
   await library.load();
+  // 「已下载」标记与平台健康横幅先取一帧数据，否则首屏菜单/横幅会慢半拍
+  refreshDownloaded().catch(() => {});
+  refreshHealth().catch(() => {});
   document.title = '孤男音乐 · 桌面声场';
 
   // 初始封面：没有播放内容时也保持视觉完整
@@ -2949,6 +3101,15 @@ async function boot() {
   window.gm?.onLyricClosedByUser?.(() => {
     store.set({ desktopLyric: false });
     if (settingsView) settingsView.load?.();
+  });
+  // 设置页下载清单里的「播放」：按曲库 id 找回本地曲目直接播
+  window.addEventListener('guman:playlibrary', async (e) => {
+    const id = String((e.detail || {}).id || '');
+    if (!id) return;
+    await library.reload();
+    const t = library.find(id);
+    if (!t) return toast(tr('这个文件已经不在本地曲库里了'), 3500, 'error');
+    player.playTrack(t, [t], 0);
   });
   // 桌面歌词点击跳转
   window.gm?.onSeek?.((t) => {

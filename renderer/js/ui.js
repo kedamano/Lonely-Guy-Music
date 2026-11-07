@@ -438,11 +438,11 @@ export function renderTrackList(container, tracks, {
     if (showAlbum) row.appendChild(el('div', { class: 'track__album', text: t.album || '' }));
 
     const actions = el('div', { class: 'track__actions' });
-    if (onDownload) {
-      actions.appendChild(el('button', { class: 'iconbtn', 'data-act': 'down', title: '下载这首歌', 'aria-label': '下载这首歌' }, [icon('download')]));
-    }
     if (onAddQueue) {
       actions.appendChild(el('button', { class: 'iconbtn', 'data-act': 'queue', title: '加入播放队列', 'aria-label': '加入播放队列' }, [icon('plus')]));
+    }
+    if (onDownload) {
+      actions.appendChild(el('button', { class: 'iconbtn', 'data-act': 'down', title: '下载这首歌', 'aria-label': '下载这首歌' }, [icon('download')]));
     }
     if (onFav !== false) {
       const b = el('button', { class: 'iconbtn', 'data-act': 'fav', title: '收藏', 'aria-label': '收藏' });

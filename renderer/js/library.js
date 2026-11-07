@@ -16,8 +16,15 @@ function serverMode() { return !!window.gm?.filePath; }
 function light(t) {
   return {
     id: String(t.id), name: t.name || '未知曲目', artist: t.artist || '本地音乐',
-    album: t.album || (t.ext || '').toUpperCase(), albumPic: t.albumPic || '',
+    album: t.album || (t.ext || '').toUpperCase(),
+    // 旁文件存在才给出后端回读地址：否则每首下载曲都会在控制台留两个 404，
+    // 而且播放时会跳过本地分支去走远端歌词/封面——那才是没有旁文件时该有的行为
+    albumPic: t.albumPic || (t.downloaded && t.hasCover ? `/api/download/pic?id=${encodeURIComponent(t.id)}` : ''),
     duration: Number(t.duration) || 0, source: 'local', url: t.url,
+    // 下载而来的本地曲目：带远端线索才能回读本地歌词/封面并显示音质
+    downloaded: !!t.downloaded,
+    bitRate: t.bitRate || 0,
+    lyricUrl: t.downloaded && t.hasLyric ? `/api/download/lyric?id=${encodeURIComponent(t.id)}` : '',
   };
 }
 
@@ -30,11 +37,18 @@ function normalizePath(file) {
 }
 
 async function load() {
-  if (!serverMode()) { loaded = true; return items; }
   if (loaded) return items;
   if (!inflight) {
     inflight = api.library()
-      .then((list) => { items = (list || []).map(light); loaded = true; return items; })
+      // 纯浏览器开发环境也能读到后端曲库（播放走 /api/local 同样成立），
+      // 只有会话内 blob 导入的曲目不在后端清单里，回源时原样保留。
+      .then((list) => {
+        const server = (list || []).map(light);
+        const ids = new Set(server.map((t) => t.id));
+        items = [...items.filter((t) => !ids.has(t.id) && String(t.id).startsWith('local:')), ...server];
+        loaded = true;
+        return items;
+      })
       .catch(() => { items = []; loaded = true; return items; })
       .finally(() => { inflight = null; });
   }
@@ -102,6 +116,13 @@ export const library = {
       if (!items.some((x) => x.id === t.id)) items.unshift(light(t));
     });
     return { added: (r.added || []).map(light), skipped: r.skipped || 0 };
+  },
+
+  /** 重新拉清单：下载器刚登记的曲目不在本次会话的缓存里，必须强制回源 */
+  async reload() {
+    loaded = false;
+    inflight = null;
+    return load();
   },
 
   async remove(item) {

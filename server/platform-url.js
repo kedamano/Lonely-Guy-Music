@@ -325,15 +325,23 @@ async function resolvePlatformUrl({
   duration,
   quality = '320',
   alternatives = [],
+  noFallback = false,
+  force = false,
 }) {
-  const key = cacheKey({ platform, musicInfo, name, artist, quality });
-  const cached = cacheGet(key);
-  if (cached) return { ...cached, cached: true };
-  const negativeMessage = negativeGet(key);
-  if (negativeMessage) {
-    const e = new Error(negativeMessage);
-    e.soft = true;
-    throw e;
+  // noFallback 也要进缓存键：探测用的「只打本平台」结果不能写进正常播放读到的那条，
+  // 否则一次探测失败会把兜底链完好的一首歌一起打成 60 秒负缓存。
+  const key = cacheKey({ platform, musicInfo, name, artist, quality }) + (noFallback ? ':native' : '');
+  // force：播放失败重试时跳过缓存（含负缓存），强制重新取链 + 重新校验，
+  // 避免 60s 负缓存把「刚失效、但换个源/重试可能还活着」的同一首歌一棍打死。
+  if (!force) {
+    const cached = cacheGet(key);
+    if (cached) return { ...cached, cached: true };
+    const negativeMessage = negativeGet(key);
+    if (negativeMessage) {
+      const e = new Error(negativeMessage);
+      e.soft = true;
+      throw e;
+    }
   }
 
   const attempts = [];
@@ -358,9 +366,11 @@ async function resolvePlatformUrl({
     seen.add(id);
     attempts.push({ sourcePlatform, fallback: sourcePlatform, expected: Number(duration || 0) });
   };
-  if (platform !== 'wy' && ncm.isReady()) pushSearchFallback('wy');
-  if (platform !== 'kw') pushSearchFallback('kw');
-  if (platform !== 'kg') pushSearchFallback('kg');
+  if (!noFallback) {
+    if (platform !== 'wy' && ncm.isReady()) pushSearchFallback('wy');
+    if (platform !== 'kw') pushSearchFallback('kw');
+    if (platform !== 'kg') pushSearchFallback('kg');
+  }
 
   let lastErr = null;
   let nativeNetworkErr = null;
@@ -421,7 +431,8 @@ async function resolvePlatformUrl({
 
   if (nativeNetworkErr) markFail(platform, nativeNetworkErr);
   const finalErr = lastErr || new Error('取链失败');
-  if (finalErr.soft) negativeSet(key, finalErr.message);
+  // force 重试失败时也不要写负缓存：让普通请求之后还能再试一次
+  if (finalErr.soft && !force) negativeSet(key, finalErr.message);
   throw finalErr;
 }
 

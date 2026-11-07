@@ -67,7 +67,7 @@ function idOf(p) {
   return 'lb_' + crypto.createHash('sha1').update(path.resolve(p)).digest('hex').slice(0, 12);
 }
 
-function addPaths(paths) {
+function addPaths(paths, extra = null) {
   const added = [];
   let skipped = 0;
   for (const raw of paths || []) {
@@ -82,12 +82,15 @@ function addPaths(paths) {
     const exist = items.find((it) => it.id === id);
     if (exist) {
       if (exist.path !== p) exist.path = p; // 同内容改名后跟着走
+      // 下载器重下同一首时会带新的时长/歌词线索，允许覆盖
+      if (extra) Object.assign(exist, extra);
       continue;
     }
     const { name, artist } = parseName(p);
     items.unshift({
       id, path: p, name, artist, ext: extOf(p),
       size: st.size, duration: 0, addedAt: Date.now(),
+      ...(extra || {}),
     });
     added.push(publicOf(id));
   }
@@ -153,6 +156,12 @@ function list() {
   return items.map((it) => publicOf(it.id)).filter(Boolean);
 }
 
+/** 下载器按 id 取真实路径（只在后端内部使用，绝不下发给渲染层） */
+function pathOf(id) {
+  const it = items.find((x) => x.id === id);
+  return it ? it.path : null;
+}
+
 /** 供 /api/local 流式播放：id → 真实路径（白名单式查找） */
 function resolve(id) {
   const it = items.find((x) => x.id === id);
@@ -163,4 +172,4 @@ function resolve(id) {
   return { path: it.path, mime: MIME[extOf(it.path)] || 'application/octet-stream', id: it.id };
 }
 
-module.exports = { init, addPaths, scanDir, remove, clear, setMeta, list, resolve, isAudio };
+module.exports = { init, addPaths, scanDir, remove, clear, setMeta, list, resolve, pathOf, isAudio };

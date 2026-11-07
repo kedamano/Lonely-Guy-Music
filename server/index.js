@@ -23,6 +23,8 @@ const platformSearch = require('./platform-search');
 const platformAggregate = require('./platform-aggregate');
 const platformUrl = require('./platform-url');
 const ncmClient = require('./ncm-client');
+const healthProbe = require('./health-probe');
+const download = require('./download');
 
 // 监听地址：仅本机回环。/api 会注入登录 cookie，绑 0.0.0.0 会把它暴露给整个局域网。
 const HOST_BIND = process.env.HOST_BIND || '127.0.0.1';
@@ -151,8 +153,8 @@ app.post('/api/sources/proxy', async (req, res) => {
 
 app.post('/api/sources/resolve', async (req, res) => {
   try {
-    const { sourcePlatform, musicInfo, quality, sourceId } = req.body || {};
-    const result = await sourceManager.resolveMusicUrl({ sourcePlatform, musicInfo, quality, sourceId });
+    const { sourcePlatform, musicInfo, quality, sourceId, skipSourceId } = req.body || {};
+    const result = await sourceManager.resolveMusicUrl({ sourcePlatform, musicInfo, quality, sourceId, skipSourceId });
     res.json({ code: 0, data: result });
   } catch (e) {
     res.status(404).json({ code: 404, msg: e.message });
@@ -161,8 +163,8 @@ app.post('/api/sources/resolve', async (req, res) => {
 
 app.post('/api/sources/action', async (req, res) => {
   try {
-    const { sourcePlatform, action, musicInfo, quality, sourceId } = req.body || {};
-    const result = await sourceManager.resolveAction({ sourcePlatform, action, musicInfo, quality, sourceId });
+    const { sourcePlatform, action, musicInfo, quality, sourceId, skipSourceId } = req.body || {};
+    const result = await sourceManager.resolveAction({ sourcePlatform, action, musicInfo, quality, sourceId, skipSourceId });
     res.json({ code: 0, data: result });
   } catch (e) {
     res.status(404).json({ code: 404, msg: e.message });
@@ -236,11 +238,12 @@ app.post('/api/platform/alternatives', async (req, res) => {
 
 // 平台原生取链：不依赖洛雪音源，酷狗匿名可用；QQ 无登录态时跨平台兜底到酷狗
 app.post('/api/platform/url', async (req, res) => {
-  const { platform, musicInfo, name, artist, duration, quality, alternatives } = req.body || {};
+  const { platform, musicInfo, name, artist, duration, quality, alternatives, force } = req.body || {};
   if (!platform) return res.status(400).json({ code: 400, msg: '缺少 platform' });
   try {
     const data = await platformUrl.resolvePlatformUrl({
       platform, musicInfo, name, artist, duration, quality, alternatives,
+      force: force === true,
     });
     res.json({ code: 0, data, online });
   } catch (e) {
@@ -249,7 +252,30 @@ app.post('/api/platform/url', async (req, res) => {
 });
 
 app.get('/api/platform/health', (req, res) => {
-  res.json({ code: 0, data: platformUrl.getHealth(), online });
+  // 兼容旧结构（{ tx:{fails,…} }）之外补上探测结论，前端一份接口就能既看实时计数又看探测历史
+  res.json({ code: 0, data: { ...healthProbe.snapshot(), live: platformUrl.getHealth() }, online });
+});
+
+// 手动探测：设置页「立即检测」。耗时 = 最慢平台，不阻塞其它请求
+app.post('/api/platform/health/check', async (req, res) => {
+  try {
+    await Promise.race([
+      healthProbe.checkAll({ force: req.body && req.body.force === true }),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('探测超时')), 90000)),
+    ]);
+    // 统一回整份快照：checkAll 在未启用/离线时返回的结论形状不同，前端只需要一种
+    res.json({ code: 0, data: healthProbe.snapshot(), online });
+  } catch (e) {
+    res.status(502).json({ code: 502, msg: e.message });
+  }
+});
+
+app.post('/api/platform/health/config', (req, res) => {
+  try {
+    res.json({ code: 0, data: healthProbe.saveConfig(req.body || {}) });
+  } catch (e) {
+    res.status(400).json({ code: 400, msg: e.message });
+  }
 });
 
 // ============== 账号 API（凭证不出后端） ==============
@@ -392,6 +418,68 @@ app.post('/api/translate', async (req, res) => {
   }
 });
 
+/* ---------- 下载（后端落盘，离线可播） ---------- */
+
+app.get('/api/download', (req, res) => {
+  res.json({ code: 0, data: download.list() });
+});
+
+app.post('/api/download', async (req, res) => {
+  try {
+    const { track, candidates, quality, overwrite } = req.body || {};
+    const taskId = download.start(track, {
+      candidates: Array.isArray(candidates) ? candidates : [],
+      quality: String(quality || '320'),
+      overwrite: overwrite === true,
+    });
+    res.json({ code: 0, data: { id: taskId } });
+  } catch (e) {
+    const status = e && e.code === 400 ? 400 : 502;
+    res.status(status).json({ code: status, msg: e.message });
+  }
+});
+
+app.post('/api/download/config', (req, res) => {
+  try {
+    res.json({ code: 0, data: download.saveConfig(req.body || {}) });
+  } catch (e) {
+    res.status(400).json({ code: 400, msg: e.message });
+  }
+});
+
+app.post('/api/download/cancel', (req, res) => {
+  res.json({ code: 0, data: { ok: download.cancel(String(req.body?.id || '')) } });
+});
+
+app.post('/api/download/remove', (req, res) => {
+  const id = String((req.body || {}).id || '');
+  if (!id) return res.status(400).json({ code: 400, msg: '缺少 id' });
+  res.json({ code: 0, data: { ok: download.remove(id) } });
+});
+
+app.post('/api/download/clear', (req, res) => {
+  res.json({ code: 0, data: { remaining: download.clearDone() } });
+});
+
+// 下载曲目的本地歌词：绝对路径不出后端，按曲库 id 白名单回读
+app.get('/api/download/lyric', (req, res) => {
+  const hit = download.attachments(String(req.query.id || ''));
+  if (!hit || !hit.lrc) return res.status(404).json({ code: 404, msg: '该曲目没有本地歌词' });
+  try {
+    res.json({ code: 0, data: { lyric: fs.readFileSync(hit.lrc, 'utf8') } });
+  } catch (e) {
+    res.status(500).json({ code: 500, msg: e.message });
+  }
+});
+
+app.get('/api/download/pic', (req, res) => {
+  const hit = download.attachments(String(req.query.id || ''));
+  if (!hit || !hit.pic || !fs.existsSync(hit.pic)) return res.status(404).end();
+  res.set('Content-Type', 'image/jpeg');
+  res.set('Cache-Control', 'public, max-age=86400');
+  fs.createReadStream(hit.pic).on('error', () => res.destroy()).pipe(res);
+});
+
 // 本地音频同源流：id 必须在清单里（拒绝任意路径），支持 Range 以便拖拽与 Web Audio
 app.get('/api/local', (req, res) => {
   const hit = library.resolve(String(req.query.id || ''));
@@ -428,8 +516,9 @@ app.get('/api/local', (req, res) => {
 // ============== 网易云 API 反代 ==============
 
 // 这些路径由上方专用路由处理，或由后端自己调用上游，不走通配反代
-const RESERVED = ['/api/__mode', '/api/proxy', '/api/local'];
-const isReserved = (p) => RESERVED.includes(p) || p.startsWith('/api/sources') || p.startsWith('/api/account') || p.startsWith('/api/library') || p.startsWith('/api/platform') || p.startsWith('/api/cache');
+const RESERVED = ['/api/__mode', '/api/proxy', '/api/local', '/api/translate', '/api/download'];
+const isReserved = (p) => RESERVED.includes(p) || p.startsWith('/api/sources') || p.startsWith('/api/account')
+  || p.startsWith('/api/library') || p.startsWith('/api/platform') || p.startsWith('/api/cache') || p.startsWith('/api/download');
 // 登录类接口会把 cookie 放进响应体，禁止渲染层直接访问（凭证只能留在后端）
 const BLOCKED = ['/login', '/logout', '/relogin', '/regvalid'];
 
@@ -733,12 +822,16 @@ const ready = new Promise((resolve, reject) => {
       ncmClient.setCookieProvider(account.getCookie);
       library.init(DATA_DIR);
       translate.init(DATA_DIR);
+      download.init(DATA_DIR);
+      healthProbe.init(DATA_DIR, { online: () => online });
       // 先初始化音源系统（读取已保存的音源脚本并执行）
       await sourceManager.init();
       console.log(`[host] 孤男音乐 后端已启动: http://127.0.0.1:${actualPort}（网易云 API 端口 ${ncmPort}）`);
       if (ENABLE_NCM) {
         startNetease(ncmPort);
         probe();
+        // 探测晚于子进程与音源就绪，起步窗口内探只会得到一堆超时
+        healthProbe.start();
       } else {
         console.log('[api] 离线模式：内置示例曲库（设置 ENABLE_NCM=1 启用网易云在线曲库）');
       }

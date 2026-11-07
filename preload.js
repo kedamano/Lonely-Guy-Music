@@ -41,8 +41,6 @@ contextBridge.exposeInMainWorld('gm', {
       return '';
     }
   },
-  // 下载保存：{ name, dir, data(number[]) } → 保存路径或 null
-  saveDownload: (payload) => ipcRenderer.invoke('download:save', payload),
   // 播放防休眠：播放时开启
   preventSleep: (on) => ipcRenderer.invoke('power:preventSleep', on),
   // 任务栏进度条：ratio 0~1，负数清除
@@ -59,6 +57,8 @@ contextBridge.exposeInMainWorld('gm', {
   agree: (ok) => ipcRenderer.invoke('agreement:decide', ok),
   // 打开日志目录（设置页 → 关于）
   openLogDir: () => ipcRenderer.invoke('shell:openLogDir'),
+  // 打开下载目录（目录由后端决定，主进程向后端要路径）
+  openDownloadDir: () => ipcRenderer.invoke('shell:openDownloadDir'),
   // 磁盘缓存（设置页 → 存储）：统计 / 清理 / 设置上限（MB，0 = 不限制）
   cacheStats: () => ipcRenderer.invoke('cache:stats'),
   clearCache: () => ipcRenderer.invoke('cache:clear'),

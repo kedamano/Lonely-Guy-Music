@@ -48,6 +48,26 @@ function withTimeout(promise, ms, label) {
 const registry = new Map(); // id -> source record
 let config = { sources: [], quality: 'flac' };
 
+// LX 取链校验失败负缓存：探测到的失效地址 60s 内不再重复探测（避免连续自动切歌反复打同一坏链）
+const LX_NEG_TTL = 60 * 1000;
+const lxNeg = new Map(); // key(sourceId||url) -> { exp }
+function lxNegKey(sourceId, url) { return `${sourceId || '?'}|${url}`; }
+function lxNegGet(k) {
+  const h = lxNeg.get(k);
+  if (!h) return false;
+  if (h.exp <= Date.now()) { lxNeg.delete(k); return false; }
+  return true;
+}
+function lxNegSet(k) { lxNeg.set(k, { exp: Date.now() + LX_NEG_TTL }); }
+
+// probeAudio 懒加载：audio-probe 又依赖本模块的 requestAsync，顶层 require 会形成循环。
+// 这里每次取最新导出，既绕开循环，也方便测试时注入 mock。
+let _probeOverride = null;
+function getProbeAudio() {
+  if (_probeOverride) return _probeOverride;
+  return require('./audio-probe').probeAudio;
+}
+
 function ensureDirs() {
   if (!fs.existsSync(SOURCES_DIR)) fs.mkdirSync(SOURCES_DIR, { recursive: true });
 }
@@ -854,7 +874,7 @@ function pickQuality(requested, available) {
   return available[0] || null;
 }
 
-async function resolveAction({ sourcePlatform, action, musicInfo, quality, sourceId }) {
+async function resolveAction({ sourcePlatform, action, musicInfo, quality, sourceId, skipSourceId }) {
   if (!VALID_SOURCES.has(sourcePlatform)) throw new Error(`不支持的平台: ${sourcePlatform}`);
   if (action !== 'musicUrl' && action !== 'lyric' && action !== 'pic') throw new Error(`不支持的 action: ${action}`);
 
@@ -865,6 +885,8 @@ async function resolveAction({ sourcePlatform, action, musicInfo, quality, sourc
   // 按注册顺序建立候选表；attempts 同下标回填失败原因，保证汇总顺序稳定。
   const entries = [];
   for (const rec of records) {
+    // skipSourceId：播放失败重试时跳过已知的失效音源，逼出其它音源 / 兜底链
+    if (skipSourceId && rec.id === skipSourceId) continue;
     const src = rec.sources[sourcePlatform];
     if (!src || !Array.isArray(src.actions) || !src.actions.includes(action)) continue;
     if (typeof rec.handlers.request !== 'function') continue;
@@ -905,11 +927,34 @@ async function resolveAction({ sourcePlatform, action, musicInfo, quality, sourc
       }
 
       if (action === 'musicUrl') {
-        if (typeof result === 'string' && result.startsWith('http')) {
-          return { url: result, sourceId: rec.id, platform: sourcePlatform, quality: q };
+        if (typeof result !== 'string' || !/^https?:\/\//i.test(result)) {
+          attempts[i] = { id: label, err: '返回的不是有效链接' };
+          throw new Error('返回的不是有效链接');
         }
-        attempts[i] = { id: label, err: '返回的不是有效链接' };
-        throw new Error('返回的不是有效链接');
+        // 失效/错误页/试听占位/非音频：校验不过则视为该音源失败，让 Promise.any 切到下一音源，
+        // 全部失败时上层转交后端原生 + 跨平台兜底（避免把坏链直接丢给 <audio> 触发 code 4「音源可能已失效」）。
+        // 关闭校验（GUMAN_DISABLE_URL_PROBE=1）时连负缓存也一并跳过，完全退回旧行为。
+        const cached = process.env.GUMAN_DISABLE_URL_PROBE !== '1' && lxNegGet(lxNegKey(rec.id, result));
+        if (cached) {
+          attempts[i] = { id: label, err: '链接已确认失效（60s 内不再探测）' };
+          throw new Error('链接已确认失效');
+        }
+        if (process.env.GUMAN_DISABLE_URL_PROBE !== '1') {
+          const durSec = Number(musicInfo && (musicInfo.interval || musicInfo.duration)) || 0;
+          let probe;
+          try {
+            probe = await getProbeAudio()(result, { expectedDurationMs: durSec > 0 ? durSec * 1000 : 0 });
+          } catch (pe) {
+            attempts[i] = { id: label, err: '链接校验异常（' + ((pe && pe.message) || '未知') + '）' };
+            throw pe;
+          }
+          if (!probe.ok) {
+            lxNegSet(lxNegKey(rec.id, result));
+            attempts[i] = { id: label, err: '链接校验未通过（' + (probe.reason || '非音频') + '）' };
+            throw new Error('链接校验未通过（' + (probe.reason || '非音频') + '）');
+          }
+        }
+        return { url: result, sourceId: rec.id, platform: sourcePlatform, quality: q };
       }
       if (action === 'pic') {
         if (typeof result === 'string' && result.startsWith('http')) {
@@ -1035,5 +1080,9 @@ module.exports = {
   requestAsync,
   QUALITY_ORDER,
   SOURCE_TIMEOUT_MS,
-  __test: { requestAsync, getProxyFor, withTimeout, isPrivateHost, assertAllowedUrl },
+  __test: {
+    requestAsync, getProxyFor, withTimeout, isPrivateHost, assertAllowedUrl,
+    setProbeAudio: (fn) => { _probeOverride = fn; },
+    clearLxNeg: () => lxNeg.clear(),
+  },
 };
