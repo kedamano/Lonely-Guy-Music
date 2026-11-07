@@ -68,7 +68,9 @@ v1.4.2 收尾时剩下两件事：安装包未签名、CI 无测试门禁。本�
 |---|---|
 | `npm run check:syntax` | 65 个 JS 文件全部通过 |
 | `npm run check:all` | 12/12 脚本通过，0 失败 |
-| 本地真实打包烟测 | 干净输出目录下 `electron-builder --win --dir` **exit 0**、产物正常生成；改名后复跑确认 `• electron-builder version=26.15.3`、`[builder] signing state: {"win":false,...}`、`loaded configuration file=electron-builder.config.js`，并进入 packaging（本轮复跑因沙箱对临时目录的批量删除保护中断，非代码问题，完整打包以主干 CI 的 `npm run dist` 为准） |
+| 本地真实打包烟测 | 干净输出目录下 `electron-builder --win --dir` **exit 0**、产物正常生成；改名后复跑确认 `• electron-builder version=26.15.3`、`[builder] signing state: {"win":false,...}`、`loaded configuration file=electron-builder.config.js`，并进入 packaging |
+| 主干 CI | `42335268015` **全绿**：语法检查、全量门禁、`npm run dist` 真实打包出 exe 并上传产物（改名修复前这一步正是失败点） |
+| 发版 CI | `42335476363` **completed/success，5 个 job 全绿**：回归门禁（ubuntu，日志实测 `check:syntax` 65 文件 + `check:all` 12/12）→ Windows / macOS / Linux 三平台构建 → 发布；**15 个资产**齐全，`latest.yml` / `latest-mac.yml` / `latest-linux.yml` 均为 `version: 1.4.3` |
 | 配置加载器实测 | `getConfig()` 返回 `configFile=electron-builder.config.js`，appId / 产物名 / publish 全部与旧 yml 等价 |
 | 全量断言 | **426 → 523**（新增 signing-check 52 + ci-gate-check 45） |
 
