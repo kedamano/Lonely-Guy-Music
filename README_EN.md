@@ -8,9 +8,9 @@
 
 NetEase online library · LX Music custom sources · Live spectrum · Karaoke lyrics · 10-band EQ · Desktop lyrics · Local music
 
-[![Version](https://img.shields.io/badge/version-1.4.2-ff6a2c?style=flat-square)](https://github.com/kedamano/Lonely-Guy-Music/releases)
+[![Version](https://img.shields.io/badge/version-1.4.3-ff6a2c?style=flat-square)](https://github.com/kedamano/Lonely-Guy-Music/releases)
 [![Electron](https://img.shields.io/badge/Electron-44-47848F?style=flat-square&logo=electron&logoColor=white)](https://www.electronjs.org/)
-[![Tests](https://img.shields.io/badge/tests-426%20checks-passing-3fb950?style=flat-square)](#-ui-regression-tests)
+[![Tests](https://img.shields.io/badge/tests-516%20checks-passing-3fb950?style=flat-square)](#-ui-regression-tests)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-8957e5?style=flat-square)](https://github.com/kedamano/Lonely-Guy-Music/releases)
 [![License](https://img.shields.io/badge/license-MIT-c9d1d9?style=flat-square)](LICENSE)
 
@@ -98,7 +98,7 @@ Grab the build for your platform from [**Releases**](https://github.com/kedamano
 | Linux x64 | `GumanMusic-x.y.z-x86_64.AppImage` | `chmod +x` and run |
 | Debian / Ubuntu | `GumanMusic-x.y.z-amd64.deb` | `sudo dpkg -i` |
 
-> Builds are not code-signed: on Windows SmartScreen shows a warning ("More info → Run anyway"); on macOS allow the app in System Settings → Privacy & Security.
+> **Signing & notarization**: since v1.4.3 the build pipeline fully supports Windows OV/EV code signing and macOS Developer ID signing + notarization. Certificates are read only from environment variables / GitHub Secrets, so **no certificate ships with the repo and default artifacts are still unsigned** — Windows may show SmartScreen ("More info → Run anyway") and macOS requires approval in System Settings → Privacy & Security. Once configured, CI signs automatically with no workflow changes; see [docs/code-signing.md](docs/code-signing.md).
 
 ### Option 2: Run from source
 
@@ -292,7 +292,7 @@ Every platform-resolution candidate is first probed with `Range: bytes=0-65535`:
 
 ## 🧪 UI Regression Tests
 
-Playwright-based real-interaction regression (**426 assertions** total):
+Playwright-based real-interaction regression (**516 assertions** total):
 
 ```bash
 npm start                        # or ENABLE_NCM=0 node server/index.js
@@ -310,6 +310,10 @@ node scripts/platform-auth-check.js # 47 platform sign-in checks (cookie parse +
 node scripts/cloud-playlist-check.js # 47 cloud-playlist editing checks (NCM write contract + cache invalidation + UI wiring)
 node scripts/np-overlay-check.js # 26 now-playing isolation checks (opaque base + stacking + no bleed during fade + queue/mini regressions)
 GUMAN_NP_URL=http://127.0.0.1:3000/ node scripts/np-overlay-check.js # adds 7 real-Chromium hit-test checks
+node scripts/signing-check.js # 47 signing-config checks (state machine + entitlements + no certs in repo + CI wiring)
+node scripts/ci-gate-check.js # 43 release-gate contracts (needs graph + aggregation list + secrets wiring)
+npm run check:syntax        # syntax-check 65 JS files (cross-platform, Node-based)
+npm run check:all           # release gate: aggregates 12 node-only scripts, fails on any error
 npx electron scripts/tray-check.js # 5 tray icon checks (ICO empty-image regression + real bounds)
 npx electron scripts/cache-check.js # 7 disk-cache checks (write → measure → clear → idempotent)
 node scripts/cache-e2e.js         # 7 on-device storage checks (needs a GUI, full IPC path)
@@ -332,7 +336,8 @@ Covers: live search / tab switching / playback / seek dragging / favorites / que
 - [x] **LX-source URL validation & auto-fallback**: resolved links are content-probed; dead/expired links fail over to the next source, and total failure falls back to native + cross-platform resolution; a failed playback auto-retries with source switching
 - [x] **Default sound sources (built-in) + LX list auto-probe**: on first launch auto-imports and enables the five community sources (SixYin / LX-Official / Flower / Huibq / JuheApi); periodically probes the lxmusic.ijinshan.com source list to sync the latest addresses; settings page can trigger an immediate update
 - [x] **Cloud playlist editing + QQ sign-in UI**: create / rename / delete cloud playlists and add / remove tracks from the client, written straight back to NetEase; paste a QQ Music cookie in Settings to auto-extract `uin` / `qm_keyst` — no more editing `platform-auth.json` by hand
-- [ ] Two-way playlist editing (add/remove cloud playlists in-app)
+- [x] **Release test gate**: a `test` job (syntax check + 12 node-only regression scripts) runs inside the tag-triggered release workflow; all three platform builds and the publish job `need` it — no package is produced when tests fail
+- [x] **Code signing / notarization pipeline**: `electron-builder.js` conditionally enables Windows SHA256 + RFC3161 timestamp signing and macOS Developer ID + hardened runtime + notarization; builds degrade to unsigned automatically when no certificate is configured, and no certificate ever enters the repo
 
 ---
 
@@ -353,7 +358,7 @@ Upstream sources are maintained by third parties and can go offline. The app ski
 <details>
 <summary><b>SmartScreen blocks the installer?</b></summary>
 
-The installer is not code-signed yet. Click "More info → Run anyway".
+The repo ships no code-signing certificate, so default artifacts are unsigned. Click "More info → Run anyway" (Windows) or approve the app under System Settings → Privacy & Security (macOS). To remove the warning entirely, configure an OV/EV certificate and an Apple Developer ID per [docs/code-signing.md](docs/code-signing.md); CI then signs and notarizes automatically with no code changes.
 </details>
 
 <details>

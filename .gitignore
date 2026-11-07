@@ -25,6 +25,20 @@ _lx_extract/
 scripts/shots/
 scripts/*.png
 
-# 构建资源仅保留图标（其余由 npm run icons 生成）
+# 构建资源仅保留图标与签名 entitlements（其余由 npm run icons 生成）
 build/*
 !build/icon.ico
+!build/entitlements.mac.plist
+!build/entitlements.mac.inherit.plist
+
+# 代码签名证书与凭据：绝不入库，只走环境变量 / GitHub Secrets
+*.pfx
+*.p12
+*.cer
+*.pvk
+*.mobileprovision
+*.key
+.env
+.env.*
+!.env.example
+signing/

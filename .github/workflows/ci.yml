@@ -27,24 +27,12 @@ jobs:
       - name: 安装依赖
         run: npm ci
 
-      - name: 语法检查（主进程/渲染层/脚本）
-        run: |
-          for f in main.js main-log.js preload.js assets/icon.js server/*.js server/platforms/*.js renderer/js/*.js scripts/*.js; do
-            node --check "$f" || { echo "语法错误: $f"; exit 1; }
-          done
-          echo "语法检查通过"
+      # 与 release.yml 的 test job 共用同一套聚合脚本，避免两份测试清单漂移
+      - name: 语法检查（主进程/渲染层/脚本，跨平台）
+        run: npm run check:syntax
 
-      - name: 代理机制单元测试
-        run: node scripts/proxy-check.js
-
-      - name: 多平台搜索离线回归
-        run: node scripts/platform-search-check.js --offline
-
-      - name: 平台取链离线回归
-        run: node scripts/platform-url-check.js --offline
-
-      - name: 音源搜索接入回归
-        run: node scripts/source-search-check.js
+      - name: 全量 node-only 回归
+        run: npm run check:all
 
       - name: 生成字体资源
         run: npm run fonts
@@ -59,7 +47,9 @@ jobs:
           path: dist/*.exe
           if-no-files-found: error
 
-# 说明：UI 回归（scripts/ui-smoke.js 等）依赖网易云接口可达，
-# 在 GitHub Runner 上不稳定，因此不在 CI 中执行；请在本地 npm start 后跑：
+# 说明：check:all 只聚合不需要 Electron / 浏览器 / 网易云网络的脚本（12 个），
+# 保证 Runner 上稳定；需要真机 DOM 的 UI 回归请在本地起服务后单独跑：
 #   node scripts/ui-smoke.js
 #   node scripts/search-guide-check.js
+#   GUMAN_NP_URL=http://127.0.0.1:3000/ node scripts/np-overlay-check.js
+# 发版链路（release.yml 的 test job）跑的是完全相同的两条命令。

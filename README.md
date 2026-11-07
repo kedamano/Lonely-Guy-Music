@@ -8,13 +8,13 @@
 
 在线网易云曲库 · 洛雪自定义音源 · 实时频谱 · 卡拉OK歌词 · 10 段均衡器 · 桌面歌词 · 本地音乐
 
-![Version](https://img.shields.io/badge/version-1.4.2-ff6a2c?style=flat-square)
+![Version](https://img.shields.io/badge/version-1.4.3-ff6a2c?style=flat-square)
 
 
 
 ![Electron](https://img.shields.io/badge/Electron-44-47848F?style=flat-square\&logo=electron\&logoColor=white)
 
-![Tests](https://img.shields.io/badge/tests-426%20checks-passing-3fb950?style=flat-square)
+![Tests](https://img.shields.io/badge/tests-516%20checks-passing-3fb950?style=flat-square)
 
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-8957e5?style=flat-square)
 
@@ -130,7 +130,7 @@
 | Linux x64       | `GumanMusic-x.y.z-x86_64.AppImage` | 免安装，`chmod +x` 后直接运行         |
 | Debian / Ubuntu | `GumanMusic-x.y.z-amd64.deb`       | `sudo dpkg -i` 安装            |
 
-> 安装包未做代码签名：Windows 首次运行 SmartScreen 提示点「更多信息 → 仍要运行」；macOS 需在「系统设置 → 隐私与安全性」放行。
+> **签名与公证**：v1.4.3 起打包链路已完整支持 Windows OV/EV 代码签名与 macOS Developer ID 签名 + 公证，证书只从环境变量 / GitHub Secrets 读取。仓库不含证书，因此**默认产物仍是未签名包**——Windows 首次运行 SmartScreen 点「更多信息 → 仍要运行」，macOS 在「系统设置 → 隐私与安全性」放行。配置证书后自动签名、无需改 workflow，步骤见 [docs/code-signing.md](docs/code-signing.md)。
 
 ### 方式二：从源码运行
 
@@ -331,7 +331,7 @@ QQ / 酷狗 / 酷我 / 咪咕曲目的播放地址不强依赖网易云，也不
 
 ## 🧪 UI 回归测试
 
-基于 Playwright 的真实交互回归（共 **426 项断言**）：
+基于 Playwright 的真实交互回归（共 **516 项断言**）：
 
 ```bash
 npm start                        # 或 ENABLE_NCM=0 node server/index.js
@@ -349,6 +349,10 @@ node scripts/platform-auth-check.js # 47 项平台登录态（Cookie 解析 + �
 node scripts/cloud-playlist-check.js # 47 项云端歌单编辑（NCM 写接口契约 + 缓存失效 + UI 接线）
 node scripts/np-overlay-check.js # 26 项详情页隔离（不透明底色 + 层叠层级 + 淡入不露底 + 队列/迷你模式不回归）
 GUMAN_NP_URL=http://127.0.0.1:3000/ node scripts/np-overlay-check.js # 另加 7 项真实 Chromium 命中测试
+node scripts/signing-check.js    # 47 项签名配置（状态机 + entitlements + 证书不入库 + CI 注入）
+node scripts/ci-gate-check.js    # 43 项发版门禁契约（needs 依赖 + 聚合清单 + secrets 注入）
+npm run check:syntax             # 65 个 JS 文件语法检查（跨平台，Node 实现）
+npm run check:all               # 发版门禁：聚合 12 个 node-only 回归脚本，任一失败即退出非零
 npx electron scripts/tray-check.js # 5 项托盘图标（ICO 空图回归 + 真实托盘坐标）
 npx electron scripts/cache-check.js # 7 项磁盘缓存（写入 → 统计 → 清理 → 幂等）
 node scripts/cache-e2e.js         # 7 项真机存储区验证（需图形界面，走完整 IPC）
@@ -370,6 +374,8 @@ node scripts/cache-e2e.js         # 7 项真机存储区验证（需图形界面
 - [x] **音源取链 URL 校验与自动兜底**：取链结果做内容探测，死链/过期链自动切下一音源，全失败转交原生 + 跨平台兜底；播放失败自动换源重试一次
 - [x] **默认音源出厂内置 + 洛雪列表定时探测**：首次启动自动导入六音 / LX官方 / Flower / Huibq / JuheApi 五个社区音源并启用，定时探测 lxmusic.ijinshan.com 音源列表页同步最新地址，设置页可手动立即更新
 - [x] **歌单双向编辑 + QQ 登录 UI**：客户端内新建 / 重命名 / 删除云端歌单，云端歌单加歌与移出歌曲，改动实时写回网易云账号；设置页粘贴 QQ Cookie 自动提取 `uin` / `qm_keyst`，保存即生效，不再需要手改 `platform-auth.json`
+- [x] **发版测试门禁**：tag 触发的 release 流水线自带 `test` job（语法检查 + 12 个 node-only 回归脚本），三平台构建与发布均 `needs: test`，测试不过绝不出包
+- [x] **代码签名 / 公证链路**：`electron-builder.js` 按凭据动态启用 Windows SHA256 + RFC3161 时间戳签名、macOS Developer ID + hardened runtime + 公证；未配置证书时自动降级为未签名构建，证书绝不入库
 
 已支持 ✅：应用内自动更新（`electron-updater` + GitHub Releases 源，发布新版本后启动即提示）
 
@@ -392,7 +398,7 @@ node scripts/cache-e2e.js         # 7 项真机存储区验证（需图形界面
 <details>
 <summary><b>为什么装完打不开 / SmartScreen 拦截？</b></summary>
 
-安装包未做代码签名。SmartScreen 提示时点击「更多信息 → 仍要运行」即可。
+仓库不含代码签名证书，默认产物未签名。SmartScreen 提示时点击「更多信息 → 仍要运行」，macOS 则在「系统设置 → 隐私与安全性」放行。若要让提示彻底消失，按 [docs/code-signing.md](docs/code-signing.md) 配置 OV/EV 证书与 Apple Developer ID；配置后 CI 会自动签名 + 公证，无需改任何代码。
 </details>
 
 <details>
