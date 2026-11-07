@@ -26,6 +26,7 @@ const ncmClient = require('./ncm-client');
 const healthProbe = require('./health-probe');
 const download = require('./download');
 const soundSources = require('./sound-sources');
+const platformAuth = require('./platform-auth');
 
 // 监听地址：仅本机回环。/api 会注入登录 cookie，绑 0.0.0.0 会把它暴露给整个局域网。
 const HOST_BIND = process.env.HOST_BIND || '127.0.0.1';
@@ -41,8 +42,11 @@ const DATA_DIR = process.env.GUMAN_USER_DATA
   ? process.env.GUMAN_USER_DATA
   : path.join(__dirname, '../userData');
 
-// 平台账号 cookie（QQ 取链需要登录态）落在用户目录，和音源配置同级别
-platformUrl.setAuthPath(path.join(DATA_DIR, 'platform-auth.json'));
+// 平台账号 cookie（QQ 取链需要登录态）落在用户目录，和音源配置同级别。
+// setAuthPath 只给取链层读；platformAuth 负责同一文件的写与状态视图，两边都基于文件天然一致。
+const PLATFORM_AUTH_FILE = path.join(DATA_DIR, 'platform-auth.json');
+platformUrl.setAuthPath(PLATFORM_AUTH_FILE);
+platformAuth.init(PLATFORM_AUTH_FILE);
 
 const app = express();
 app.use(express.json({ limit: '2mb' }));
@@ -276,6 +280,28 @@ app.post('/api/platform/health/config', (req, res) => {
     res.json({ code: 0, data: healthProbe.saveConfig(req.body || {}) });
   } catch (e) {
     res.status(400).json({ code: 400, msg: e.message });
+  }
+});
+
+// ============== 平台登录态（QQ 音乐）：设置页填写，凭证只落后端 ==============
+// 只回掩码状态；qm_keyst 永远不出后端。写文件后取链层下次 readAuth() 立即生效。
+app.get('/api/platform/auth', (_req, res) => {
+  res.json({ code: 0, data: platformAuth.state(), online });
+});
+
+app.post('/api/platform/auth', (req, res) => {
+  try {
+    res.json({ code: 0, data: platformAuth.save(req.body || {}), online });
+  } catch (e) {
+    res.status(e.status || 400).json({ code: e.status || 400, msg: e.message });
+  }
+});
+
+app.post('/api/platform/auth/clear', (_req, res) => {
+  try {
+    res.json({ code: 0, data: platformAuth.clear(), online });
+  } catch (e) {
+    res.status(500).json({ code: 500, msg: e.message });
   }
 });
 

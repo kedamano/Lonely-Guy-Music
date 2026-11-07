@@ -198,7 +198,8 @@ async function requestVkey(songmid, filename, auth, quality) {
     headers: {
       'User-Agent': DESKTOP_UA,
       Referer: 'https://y.qq.com/',
-      Cookie: `uin=${auth.uin}; qm_keyst=${auth.qmKeyst}`,
+      // uinRaw 保留浏览器 Cookie 里的原始写法（常见 o 前缀），纯数字 uin 供 comm.uin 使用
+      Cookie: `uin=${auth.uinRaw || auth.uin}; qm_keyst=${auth.qmKeyst}`,
     },
   });
   const d = j && j.req_0 && j.req_0.data;

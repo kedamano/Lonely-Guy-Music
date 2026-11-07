@@ -21,6 +21,8 @@ const fs = require('fs');
 const path = require('path');
 const { EventEmitter } = require('events');
 const sourceManager = require('./source-manager');
+// 版本号单一来源：以前把 UA 里的版本写死，发版时容易漏改
+const APP_VERSION = require('../package.json').version;
 
 const PROBE_URL = 'https://lxmusic.ijinshan.com/sound-source/index.html';
 const PAGE_UPDATE_RE = /攻略更新于\s*(\d{4}\/\d{1,2}\/\d{1,2})/;
@@ -121,7 +123,7 @@ async function fetchLatest() {
     method: 'GET',
     timeout: 30000,
     headers: {
-      'User-Agent': 'Mozilla/5.0 (compatible; GumanMusic/1.4.1)',
+      'User-Agent': `Mozilla/5.0 (compatible; GumanMusic/${APP_VERSION})`,
       Accept: 'text/html,application/xhtml+xml',
     },
     redirectLimit: 5,

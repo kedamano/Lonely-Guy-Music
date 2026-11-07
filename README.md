@@ -8,13 +8,13 @@
 
 在线网易云曲库 · 洛雪自定义音源 · 实时频谱 · 卡拉OK歌词 · 10 段均衡器 · 桌面歌词 · 本地音乐
 
-![Version](https://img.shields.io/badge/version-1.4.1-ff6a2c?style=flat-square)
+![Version](https://img.shields.io/badge/version-1.4.2-ff6a2c?style=flat-square)
 
 
 
 ![Electron](https://img.shields.io/badge/Electron-44-47848F?style=flat-square\&logo=electron\&logoColor=white)
 
-![Tests](https://img.shields.io/badge/tests-306%20checks-passing-3fb950?style=flat-square)
+![Tests](https://img.shields.io/badge/tests-426%20checks-passing-3fb950?style=flat-square)
 
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-8957e5?style=flat-square)
 
@@ -76,7 +76,8 @@
 | 播放控制          | 播放/暂停/上一首/下一首、列表·单曲·顺序三种循环、拖拽进度与音量                                                                                                        |
 | 播放队列          | 抽屉式管理，可增删、跳播，插入位置可选顶部/底部                                                                                                                  |
 | 收藏与历史         | 可移除/清空，跨会话持久化，每首歌记住上次播放进度                                                                                                                 |
-| **云歌单**       | 登录后直接读取账号里的「我喜欢的音乐」与全部云端歌单，点击即播，不占用本机空间                                                                                                   |
+| **云歌单（可编辑）** | 登录后直接读取账号里的「我喜欢的音乐」与全部云端歌单，点击即播，不占用本机空间；**支持在客户端内新建、重命名、删除自建云端歌单，以及往云端歌单加歌 / 移出歌曲**，改动实时写回网易云账号，手机端同步可见 |
+| **QQ 登录态**    | 设置页粘贴 QQ 音乐网页版 Cookie 即可自动提取 `uin` / `qm_keyst`，或手动填两个字段；保存后立即生效，QQ 曲目优先走官方 vkey 原生音质，不需要手改 `platform-auth.json`              |
 | 分页            | 音乐馆与搜索走服务端分页（每页 30），超长歌单走客户端分页（每页 50）                                                                                                     |
 
 ### 🔊 声场体验（桌面端专属）
@@ -312,7 +313,7 @@ QQ / 酷狗 / 酷我 / 咪咕曲目的播放地址不强依赖网易云，也不
 | 顺序 | 环节 | 说明 |
 |---|---|---|
 | 1 | 洛雪音源 | 用户启用了支持该平台的音源时优先，能给出 FLAC / 320K |
-| 2 | 平台原生 | 酷狗移动端 `playInfo`、酷我 `anti.s` 匿名即可取到完整直链；QQ 在写入登录态后走官方 `vkey`；网易云走本地 NCM |
+| 2 | 平台原生 | 酷狗移动端 `playInfo`、酷我 `anti.s` 匿名即可取到完整直链；QQ 在「设置 → QQ 音乐登录态」粘贴 Cookie 后走官方 `vkey`；网易云走本地 NCM |
 | 3 | 聚合备选 | 聚合结果行内自带 `sources[]`，当前平台不成功时按相关度依次尝试其他平台的同一首（每一条都经过校验） |
 | 4 | 跨平台兜底 | 按「歌名 + 歌手 + 时长」依次到网易云、酷我、酷狗检索同一首播放 |
 
@@ -323,13 +324,14 @@ QQ / 酷狗 / 酷我 / 咪咕曲目的播放地址不强依赖网易云，也不
 **已知限制**：
 
 - 免费收录以 128K 为主；VIP 曲目（如周杰伦原版）通常只有翻唱或其他收录版本可播；
-- 未提供 QQ 登录入口。需要 QQ 原声时，可在 `userData/platform-auth.json` 写入 `{ "tx": { "uin": "你的QQ号", "qmKeyst": "cookie 里的 qm_keyst" } }`，取链会优先走 QQ 官方 vkey。
+- QQ 原生音质需提供已登录账号的 Cookie（设置 → QQ 音乐登录态，粘贴整段 Cookie 自动提取）；凭证只落本机 `userData/platform-auth.json`，过期后需重新粘贴；
+- 云端歌单的增删改依赖网易云在线接口与登录态，离线模式下云歌单仍可浏览已缓存内容，但写操作会被拦截并提示。
 
 ---
 
 ## 🧪 UI 回归测试
 
-基于 Playwright 的真实交互回归（共 **306 项断言**）：
+基于 Playwright 的真实交互回归（共 **426 项断言**）：
 
 ```bash
 npm start                        # 或 ENABLE_NCM=0 node server/index.js
@@ -343,6 +345,10 @@ node scripts/version-check.js     # 5 项版本号契约（主进程/渲染层�
 node scripts/source-search-check.js # 23 项音源搜索（并行回退 + 能力查询 + 汽水）
 node scripts/lx-url-validate-check.js # 10 项音源取链 URL 校验（坏链拦截 + 换源兜底 + 负缓存）
 node scripts/sound-sources-check.js # 17 项默认音源（页面解析 + 自动导入幂等 + 地址变更更新）
+node scripts/platform-auth-check.js # 47 项平台登录态（Cookie 解析 + 原子落盘 + 凭证不外泄 + 前后端接线）
+node scripts/cloud-playlist-check.js # 47 项云端歌单编辑（NCM 写接口契约 + 缓存失效 + UI 接线）
+node scripts/np-overlay-check.js # 26 项详情页隔离（不透明底色 + 层叠层级 + 淡入不露底 + 队列/迷你模式不回归）
+GUMAN_NP_URL=http://127.0.0.1:3000/ node scripts/np-overlay-check.js # 另加 7 项真实 Chromium 命中测试
 npx electron scripts/tray-check.js # 5 项托盘图标（ICO 空图回归 + 真实托盘坐标）
 npx electron scripts/cache-check.js # 7 项磁盘缓存（写入 → 统计 → 清理 → 幂等）
 node scripts/cache-e2e.js         # 7 项真机存储区验证（需图形界面，走完整 IPC）
@@ -363,7 +369,7 @@ node scripts/cache-e2e.js         # 7 项真机存储区验证（需图形界面
 - [x] **平台健康主动探测**：定时探测各平台搜索/取链可用性并持久化，首屏横幅提示「哪个平台从何时开始不可用」，设置页可看状态/故障记录、手动立即检测
 - [x] **音源取链 URL 校验与自动兜底**：取链结果做内容探测，死链/过期链自动切下一音源，全失败转交原生 + 跨平台兜底；播放失败自动换源重试一次
 - [x] **默认音源出厂内置 + 洛雪列表定时探测**：首次启动自动导入六音 / LX官方 / Flower / Huibq / JuheApi 五个社区音源并启用，定时探测 lxmusic.ijinshan.com 音源列表页同步最新地址，设置页可手动立即更新
-- [ ] 歌单双向编辑（在客户端内增删云端歌单）
+- [x] **歌单双向编辑 + QQ 登录 UI**：客户端内新建 / 重命名 / 删除云端歌单，云端歌单加歌与移出歌曲，改动实时写回网易云账号；设置页粘贴 QQ Cookie 自动提取 `uin` / `qm_keyst`，保存即生效，不再需要手改 `platform-auth.json`
 
 已支持 ✅：应用内自动更新（`electron-updater` + GitHub Releases 源，发布新版本后启动即提示）
 

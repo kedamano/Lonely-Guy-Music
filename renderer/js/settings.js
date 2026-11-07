@@ -118,7 +118,10 @@ export class SettingsView {
   async init() {
     this.container.innerHTML = '';
     this.renderSkeleton();
-    await Promise.all([this.load(), this.loadTranslate(), this.loadDownload(), this.loadHealth(), this.loadSoundSources()]);
+    await Promise.all([
+      this.load(), this.loadTranslate(), this.loadDownload(),
+      this.loadHealth(), this.loadSoundSources(), this.loadPlatformAuth(),
+    ]);
     // 状态行与占位符是接口回来后才写入的，首屏那次 applyLang 看不到它们
     this.refreshLang();
   }
@@ -608,6 +611,53 @@ export class SettingsView {
     this.proxyStatus = el('p', { class: 'settings__desc settings__proxystatus' });
     proxySec.appendChild(this.proxyStatus);
     wrap.appendChild(proxySec);
+
+    /* ---------- QQ 音乐登录态（替代手填 platform-auth.json） ---------- */
+    const qqSec = this.section(
+      'QQ 音乐登录态',
+      'QQ 原生取链需要账号凭证。在浏览器登录 y.qq.com 后复制 Cookie 粘贴到下面，会自动提取 uin 与 qm_keyst；凭证只保存在本机用户目录，保存后立即生效，无需重启。',
+    );
+    this.qqStatus = el('div', { class: 'settings__desc settings__proxystatus', text: '读取中…' });
+    qqSec.appendChild(this.qqStatus);
+
+    this.qqCookieInput = el('textarea', {
+      class: 'settings__input qqauth__textarea', rows: '3', spellcheck: 'false',
+      placeholder: '粘贴整段 Cookie：uin=o0123456; qm_keyst=xxxxxxxx; …',
+      'aria-label': 'QQ 音乐整段 Cookie',
+    });
+    qqSec.appendChild(el('div', { class: 'qqauth__field' }, [
+      el('span', { class: 'settings__item-label', text: '整段 Cookie（推荐）' }),
+      this.qqCookieInput,
+      el('span', { class: 'settings__item-desc', text: '浏览器登录 y.qq.com → F12 → 应用/存储 → Cookies → 复制整段 Cookie；也可直接贴 platform-auth.json 的内容。' }),
+    ]));
+
+    this.qqUinInput = el('input', {
+      class: 'settings__input', type: 'text', spellcheck: 'false', autocomplete: 'off',
+      placeholder: 'uin（QQ 号，纯数字）', 'aria-label': 'QQ uin',
+    });
+    this.qqKeyInput = el('input', {
+      class: 'settings__input', type: 'password', spellcheck: 'false', autocomplete: 'off',
+      placeholder: 'qm_keyst', 'aria-label': 'QQ qm_keyst',
+    });
+    qqSec.appendChild(el('div', { class: 'qqauth__field' }, [
+      el('span', { class: 'settings__item-label', text: '或手动填写两个字段' }),
+      el('div', { class: 'settings__addrow' }, [this.qqUinInput, this.qqKeyInput]),
+    ]));
+
+    this.qqSaveBtn = el('button', {
+      class: 'btn btn--primary', onclick: () => this.onSavePlatformAuth(),
+    }, [icon('check'), '保存并生效']);
+    this.qqClearBtn = el('button', {
+      class: 'btn', onclick: () => this.onClearPlatformAuth(),
+    }, [icon('trash'), '清除登录态']);
+    qqSec.appendChild(el('div', { class: 'settings__item-ctrl settings__actions' }, [
+      this.qqSaveBtn, this.qqClearBtn,
+    ]));
+    qqSec.appendChild(el('p', {
+      class: 'settings__item-desc',
+      text: '未配置时 QQ 曲目会自动走跨源兜底（找酷狗同曲）；配置后才尝试 QQ 原生音质。凭证不会发送到界面层以外的任何地方。',
+    }));
+    wrap.appendChild(qqSec);
 
     /* ---------- 音源管理 ---------- */
     const sourceSec = this.section('自定义源管理', '兼容 LX Music 自定义音源脚本。导入后启用，播放时会优先用音源取链；全部失败才降级官方接口。');
@@ -1109,6 +1159,71 @@ export class SettingsView {
       this.onToast('保存失败：' + e.message);
     } finally {
       this.proxySaveBtn.disabled = false;
+    }
+  }
+
+  /* ---------- 平台登录态（QQ 音乐） ---------- */
+  async loadPlatformAuth() {
+    try {
+      this.authState = await api.platformAuth();
+    } catch (_) {
+      this.authState = { tx: { configured: false, uin: '', updatedAt: 0 } };
+    }
+    this.renderPlatformAuth();
+  }
+
+  renderPlatformAuth() {
+    if (!this.qqStatus) return;
+    const tx = (this.authState && this.authState.tx) || {};
+    if (tx.configured) {
+      const at = tx.updatedAt ? new Date(tx.updatedAt).toLocaleString() : '未知时间';
+      this.qqStatus.textContent = `当前状态：已配置 · uin ${tx.uin || '****'} · 更新于 ${at}。QQ 曲目将优先取原生音质。`;
+      this.qqStatus.classList.add('is-ok');
+    } else {
+      this.qqStatus.textContent = '当前状态：未配置 · QQ 曲目暂走跨源兜底（找酷狗同曲）。';
+      this.qqStatus.classList.remove('is-ok');
+    }
+  }
+
+  clearAuthInputs() {
+    ['qqCookieInput', 'qqUinInput', 'qqKeyInput'].forEach((k) => {
+      if (this[k]) this[k].value = '';
+    });
+  }
+
+  async onSavePlatformAuth() {
+    const cookie = (this.qqCookieInput?.value || '').trim();
+    const uin = (this.qqUinInput?.value || '').trim();
+    const qmKeyst = (this.qqKeyInput?.value || '').trim();
+    if (!cookie && !(uin && qmKeyst)) {
+      return this.onToast('请粘贴整段 Cookie，或分别填写 uin 与 qm_keyst', 4000, 'error');
+    }
+    if (this.qqSaveBtn) this.qqSaveBtn.disabled = true;
+    try {
+      this.authState = await api.platformAuthSave({ cookie, uin, qmKeyst });
+      this.clearAuthInputs(); // 凭证不留在输入框的 DOM 里
+      this.renderPlatformAuth();
+      this.refreshLang();
+      this.onToast('QQ 登录态已保存，播放时立即生效');
+    } catch (e) {
+      this.onToast('保存失败：' + (e.message || '接口不可用'), 4500, 'error');
+    } finally {
+      if (this.qqSaveBtn) this.qqSaveBtn.disabled = false;
+    }
+  }
+
+  async onClearPlatformAuth() {
+    if (this.qqClearBtn) this.qqClearBtn.disabled = true;
+    try {
+      this.authState = await api.platformAuthClear();
+      this.clearAuthInputs();
+      this.renderPlatformAuth();
+      this.refreshLang();
+      this.onToast('已清除 QQ 登录态，恢复跨源兜底');
+    } catch (e) {
+      this.onToast('清除失败：' + (e.message || '接口不可用'), 4500, 'error');
+    } finally {
+      if (this.qqClearBtn) this.qqClearBtn.disabled = false;
     }
   }
 

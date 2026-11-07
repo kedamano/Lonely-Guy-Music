@@ -383,7 +383,30 @@ const ZH_TW = {
   '已取消缓存上限': '已取消快取上限', '正在清理缓存…': '正在清理快取…',
   '缓存已清理': '快取已清理', '清理失败：': '清理失敗：',
   // 其它
-  '已恢复该场景的默认参数': '已恢復該場景的預設參數', '设置失败：': '設定失敗：'};
+  '已恢复该场景的默认参数': '已恢復該場景的預設參數', '设置失败：': '設定失敗：',
+  // 云端歌单双向编辑
+  '可新建、重命名、删除自建歌单，曲目增删直接写入网易云账号': '可新建、重新命名、刪除自建歌單，曲目增刪直接寫入網易雲帳號',
+  新建云端歌单: '新建雲端歌單', 重命名云端歌单: '重新命名雲端歌單', 删除云端歌单: '刪除雲端歌單',
+  '新建本地歌单…': '新建本機歌單…', '新建云端歌单…': '新建雲端歌單…',
+  '云端歌单 · 写入网易云账号': '雲端歌單 · 寫入網易雲帳號',
+  从云端歌单移除: '從雲端歌單移除',
+  '会直接创建到当前登录的网易云账号，手机端也能看到。': '會直接建立到目前登入的網易雲帳號，手機端也能看到。',
+  '支持重命名与删除': '支援重新命名與刪除',
+  // QQ 音乐登录态
+  'QQ 音乐登录态': 'QQ 音樂登入狀態',
+  'QQ 原生取链需要账号凭证。在浏览器登录 y.qq.com 后复制 Cookie 粘贴到下面，会自动提取 uin 与 qm_keyst；凭证只保存在本机用户目录，保存后立即生效，无需重启。':
+    'QQ 原生取鏈需要帳號憑證。在瀏覽器登入 y.qq.com 後複製 Cookie 貼到下方，會自動擷取 uin 與 qm_keyst；憑證只儲存在本機使用者目錄，儲存後立即生效，無需重啟。',
+  '整段 Cookie（推荐）': '整段 Cookie（推薦）',
+  '粘贴整段 Cookie：uin=o0123456; qm_keyst=xxxxxxxx; …': '貼上整段 Cookie：uin=o0123456; qm_keyst=xxxxxxxx; …',
+  '浏览器登录 y.qq.com → F12 → 应用/存储 → Cookies → 复制整段 Cookie；也可直接贴 platform-auth.json 的内容。':
+    '瀏覽器登入 y.qq.com → F12 → 應用程式/儲存空間 → Cookies → 複製整段 Cookie；也可直接貼上 platform-auth.json 的內容。',
+  或手动填写两个字段: '或手動填寫兩個欄位',
+  'uin（QQ 号，纯数字）': 'uin（QQ 號，純數字）',
+  保存并生效: '儲存並生效', 清除登录态: '清除登入狀態',
+  '未配置时 QQ 曲目会自动走跨源兜底（找酷狗同曲）；配置后才尝试 QQ 原生音质。凭证不会发送到界面层以外的任何地方。':
+    '未設定時 QQ 曲目會自動走跨源兜底（找酷狗同曲）；設定後才嘗試 QQ 原生音質。憑證不會傳送到介面層以外的任何地方。',
+  '请粘贴整段 Cookie，或分别填写 uin 与 qm_keyst': '請貼上整段 Cookie，或分別填寫 uin 與 qm_keyst',
+};
 
 const EN = {
   // 导航 / 侧栏
@@ -786,7 +809,33 @@ const EN = {
   '已取消缓存上限': 'Cache limit removed', '正在清理缓存…': 'Clearing cache…', '缓存已清理': 'Cache cleared',
   // Misc
   '已恢复该场景的默认参数': 'Default parameters restored for this scene',
-  '设置失败：': 'Failed to save: '};
+  '设置失败：': 'Failed to save: ',
+  // Cloud playlist editing
+  '可新建、重命名、删除自建歌单，曲目增删直接写入网易云账号':
+    'Create, rename and delete your own playlists; track changes are written straight to your NetEase account',
+  新建云端歌单: 'New cloud playlist', 重命名云端歌单: 'Rename cloud playlist', 删除云端歌单: 'Delete cloud playlist',
+  '新建本地歌单…': 'New local playlist…', '新建云端歌单…': 'New cloud playlist…',
+  '云端歌单 · 写入网易云账号': 'Cloud playlists · saved to your NetEase account',
+  从云端歌单移除: 'Remove from cloud playlist',
+  '会直接创建到当前登录的网易云账号，手机端也能看到。':
+    'Created in the signed-in NetEase account, so it also shows up on your phone.',
+  '支持重命名与删除': 'Rename and delete supported',
+  // QQ Music sign-in
+  'QQ 音乐登录态': 'QQ Music sign-in',
+  'QQ 原生取链需要账号凭证。在浏览器登录 y.qq.com 后复制 Cookie 粘贴到下面，会自动提取 uin 与 qm_keyst；凭证只保存在本机用户目录，保存后立即生效，无需重启。':
+    'Native QQ Music playback needs account credentials. Sign in at y.qq.com in a browser, then paste the cookie below — uin and qm_keyst are extracted automatically. Credentials stay in your local user folder and take effect immediately.',
+  '整段 Cookie（推荐）': 'Full cookie string (recommended)',
+  '粘贴整段 Cookie：uin=o0123456; qm_keyst=xxxxxxxx; …': 'Paste the whole cookie: uin=o0123456; qm_keyst=xxxxxxxx; …',
+  '浏览器登录 y.qq.com → F12 → 应用/存储 → Cookies → 复制整段 Cookie；也可直接贴 platform-auth.json 的内容。':
+    'Sign in at y.qq.com → F12 → Application → Cookies → copy the whole cookie. You can also paste the contents of platform-auth.json.',
+  或手动填写两个字段: 'Or fill in both fields manually',
+  'uin（QQ 号，纯数字）': 'uin (QQ number, digits only)',
+  保存并生效: 'Save & apply', 清除登录态: 'Clear sign-in',
+  '未配置时 QQ 曲目会自动走跨源兜底（找酷狗同曲）；配置后才尝试 QQ 原生音质。凭证不会发送到界面层以外的任何地方。':
+    'Without credentials, QQ tracks fall back to the same song on Kugou. Once configured, native QQ quality is attempted. Credentials never leave this machine.',
+  '请粘贴整段 Cookie，或分别填写 uin 与 qm_keyst':
+    'Paste the whole cookie, or fill in uin and qm_keyst separately',
+};
 
 const DICTS = { 'zh-TW': ZH_TW, en: EN };
 

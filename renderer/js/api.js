@@ -70,6 +70,21 @@ async function request(path, params, opts = {}) {
 // 专用路由统一返回 { code, data }，透传路由直接返回网易云响应体
 const dataOf = (p) => p.then((r) => (r && Object.prototype.hasOwnProperty.call(r, 'data') ? r.data : r));
 
+/**
+ * 网易云写操作（歌单创建/删除/曲目增删）统一走透明反代，登录 cookie 由后端注入。
+ * NCM 用业务码表达失败但 HTTP 仍是 200，这里把它翻译成可见错误；
+ * 成功后清掉相关读缓存，否则详情页会继续显示改动前的曲目。
+ */
+async function ncmWrite(path, params, prefixes = []) {
+  const r = await request(path, params);
+  const code = Number(r && r.code);
+  if (code !== 200 && code !== 0) {
+    throw new Error((r && (r.msg || r.message)) || `云端操作失败（code ${code || '未知'}）`);
+  }
+  prefixes.forEach(invalidate);
+  return r;
+}
+
 async function post(path, body, timeout = TIMEOUT) {
   const opts = typeof timeout === 'number' ? { timeout } : (timeout || {});
   const res = await fetch(BASE + path, {
@@ -166,6 +181,29 @@ export const api = {
   // 订阅状态写在歌单详情里，成功后要让它和个性化推荐的缓存失效
   subscribePlaylist: (id, t = 1) => request('/playlist/subscribe', { id, t })
     .then((r) => { invalidate('pldetail:' + id); invalidate('personalized'); return r; }),
+  // 云端歌单双向编辑：直接写网易云账号，登录 cookie 由后端注入（渲染层拿不到）
+  cloudPlaylistCreate: (name, privacy = '0') => ncmWrite(
+    '/playlist/create', { name, privacy, type: 'NORMAL' },
+    ['pldetail:', 'pltracks:', 'personalized'],
+  ),
+  cloudPlaylistDelete: (id) => ncmWrite(
+    '/playlist/delete', { id },
+    ['pldetail:' + id, 'pltracks:' + id, 'personalized'],
+  ),
+  // 只改名：/playlist/update 会连带把 desc/tags 清空，这里用官方的 name/update
+  cloudPlaylistUpdate: (id, name) => ncmWrite(
+    '/playlist/name/update', { id, name },
+    ['pldetail:' + id, 'personalized'],
+  ),
+  // op: 'add' 收藏歌曲到歌单 / 'del' 从歌单移除；tracks 为网易云歌曲 id 列表
+  cloudPlaylistTracks: (pid, trackIds, op = 'add') => ncmWrite(
+    '/playlist/tracks', {
+      op,
+      pid,
+      tracks: (Array.isArray(trackIds) ? trackIds : [trackIds]).filter(Boolean).join(','),
+    },
+    ['pldetail:' + pid, 'pltracks:' + pid],
+  ),
   // 账号下的歌单：subscribed=false 是我创建的，true 是我收藏的别人的。
   // 早先用 /playlist/subs，该路由在当前 NeteaseCloudMusicApi 版本上是 404，云端区块一直静默空掉。
   userPlaylists: (uid, limit = 100) => request('/user/playlist', { uid, limit, offset: 0 }),
@@ -207,6 +245,10 @@ export const api = {
   removeSource: (id) => post('/sources/remove', { id }),
   setQuality: (quality) => post('/sources/quality', { quality }),
   setProxy: (proxy) => post('/sources/proxy', { proxy }),
+  // 平台登录态（QQ 音乐）：只回掩码状态，凭证不出后端
+  platformAuth: () => dataOf(request('/platform/auth')),
+  platformAuthSave: (payload) => post('/platform/auth', payload),
+  platformAuthClear: () => post('/platform/auth/clear', {}),
   resolveMusicUrl: (sourcePlatform, musicInfo, quality, sourceId, skipSourceId) =>
     post('/sources/resolve', { sourcePlatform, musicInfo, quality, sourceId, skipSourceId }, 20000),
   // 音源歌词：非网易云平台（tx/kg）拿不到网易云歌词接口，交给音源脚本解析

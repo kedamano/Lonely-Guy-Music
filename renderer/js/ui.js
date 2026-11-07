@@ -170,7 +170,12 @@ export function playCountText(n) {
   return String(n);
 }
 
-export function renderPlaylistGrid(container, playlists, onOpen) {
+/**
+ * @param {object} opts 可选
+ *   opts.menuFor(pl) → 菜单项数组；返回空数组表示该卡片没有更多操作（不渲染按钮）。
+ *   用于「我的云端歌单」的删除/重命名，普通歌单网格不受影响。
+ */
+export function renderPlaylistGrid(container, playlists, onOpen, opts = {}) {
   container.innerHTML = '';
   if (!playlists.length) {
     container.appendChild(emptyState({ iconName: 'hall', title: '没有找到歌单', desc: '换个分类或关键词试试。' }));
@@ -189,6 +194,12 @@ export function renderPlaylistGrid(container, playlists, onOpen) {
     card.appendChild(cover(pl.id || pl.name, pl.picUrl));
     const playBtn = el('button', { class: 'pl-card__play', 'data-act': 'open', title: '打开歌单', 'aria-label': '打开歌单' }, [icon('play')]);
     card.querySelector('.pl-card__cover').appendChild(playBtn);
+    if (opts.menuFor && (opts.menuFor(pl) || []).length) {
+      card.appendChild(el('button', {
+        class: 'pl-card__more', 'data-act': 'menu',
+        title: '更多操作', 'aria-label': `更多操作：${pl.name}`,
+      }, [icon('more')]));
+    }
     card.appendChild(el('div', { class: 'pl-card__name', text: pl.name }));
     card.appendChild(el('div', {
       class: 'pl-card__meta',
@@ -196,22 +207,39 @@ export function renderPlaylistGrid(container, playlists, onOpen) {
     }));
     container.appendChild(card);
   });
-  bindGridDelegation(container, playlists, onOpen);
+  bindGridDelegation(container, playlists, onOpen, opts);
 }
 
 /* 歌单网格也用委托：卡片数量动辄几十上百，逐张绑 click/keydown 纯属浪费 */
-function bindGridDelegation(container, playlists, onOpen) {
+function bindGridDelegation(container, playlists, onOpen, opts = {}) {
   let st = container.__gridDelegate;
-  if (st) { st.playlists = playlists; st.onOpen = onOpen; return st; }
-  st = { playlists, onOpen };
+  if (st) { st.playlists = playlists; st.onOpen = onOpen; st.opts = opts; return st; }
+  st = { playlists, onOpen, opts };
   container.__gridDelegate = st;
 
-  const open = (e) => {
+  const cardOf = (e) => {
     const card = e.target.closest ? e.target.closest('.pl-card') : null;
-    if (!card || !container.contains(card)) return false;
+    return card && container.contains(card) ? card : null;
+  };
+  const popMenu = (card, x, y) => {
+    const pl = st.playlists[Number(card.dataset.idx)];
+    if (!pl || !st.opts.menuFor) return;
+    const items = st.opts.menuFor(pl);
+    if (items && items.length) openMenu(x, y, items);
+  };
+  const open = (e) => {
+    const card = cardOf(e);
+    if (!card) return false;
     const pl = st.playlists[Number(card.dataset.idx)];
     if (!pl) return false;
-    if (e.target.closest('[data-act]')) e.stopPropagation();
+    const act = e.target.closest('[data-act]');
+    if (act) e.stopPropagation();
+    // 「更多操作」不能顺带打开歌单：单独拦截
+    if (act && act.dataset.act === 'menu') {
+      const r = act.getBoundingClientRect();
+      popMenu(card, r.right, r.bottom + 6);
+      return true;
+    }
     st.onOpen(pl);
     return true;
   };
@@ -220,6 +248,16 @@ function bindGridDelegation(container, playlists, onOpen) {
   container.addEventListener('keydown', (e) => {
     if (e.key !== 'Enter' && e.key !== ' ') return;
     if (open(e)) e.preventDefault();
+  });
+  // 卡片右键与按钮等效，照顾桌面用户肌肉记忆
+  container.addEventListener('contextmenu', (e) => {
+    const card = cardOf(e);
+    if (!card || !st.opts.menuFor) return;
+    const pl = st.playlists[Number(card.dataset.idx)];
+    const items = pl ? st.opts.menuFor(pl) : null;
+    if (!items || !items.length) return;
+    e.preventDefault();
+    popMenu(card, e.clientX, e.clientY);
   });
   return st;
 }

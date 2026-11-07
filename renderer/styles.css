@@ -328,6 +328,18 @@ body::after {
 .pl-card__play > svg { width: 18px; height: 18px; fill: currentColor; stroke: none; margin-left: 2px; }
 .pl-card:hover .pl-card__play, .pl-card:focus-visible .pl-card__play { transform: none; opacity: 1; }
 .pl-card__play:hover { transform: scale(1.08) !important; }
+/* 云端自建歌单的「更多操作」：默认隐藏，hover/键盘聚焦才出现，不抢封面视觉 */
+.pl-card__more {
+  position: absolute; right: 18px; top: 18px; z-index: 3;
+  width: 30px; height: 30px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: rgba(13, 12, 10, .78); color: var(--text);
+  border: 1px solid var(--border-strong); backdrop-filter: blur(6px);
+  opacity: 0; transition: opacity var(--dur), transform var(--dur);
+}
+.pl-card__more > svg { width: 16px; height: 16px; fill: currentColor; stroke: none; }
+.pl-card:hover .pl-card__more, .pl-card__more:focus-visible { opacity: 1; }
+.pl-card__more:hover { transform: scale(1.08); color: var(--accent); }
 /* 收藏来源标记：压在封面上，必须不透明底才看得清 */
 .pl-badge {
   position: absolute; left: 8px; top: 8px; z-index: 2;
@@ -675,6 +687,15 @@ select option:disabled { background: var(--surface-2); color: var(--faint); }
 .settings__sourcelist { display: flex; flex-direction: column; gap: 10px; }
 .settings__empty { font-size: 12.5px; color: var(--muted); border: 1px dashed var(--border-strong); border-radius: 12px; padding: 30px; text-align: center; }
 .settings__proxystatus { margin: 0; font-size: 12px; }
+.settings__proxystatus.is-ok { color: var(--accent); }
+/* QQ 登录态：整段 Cookie 输入区 */
+.qqauth__field { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
+.qqauth__textarea {
+  resize: vertical; min-height: 76px; line-height: 1.55;
+  font-family: var(--font-mono, monospace); font-size: 12px;
+}
+.qqauth__field .settings__input { flex: 0 0 auto; width: 100%; }
+.qqauth__field .settings__addrow { margin-bottom: 0; }
 
 /* ---------- 分页条 ---------- */
 .pager {
@@ -1025,8 +1046,14 @@ body.mini .dlpanel { display: none !important; }
 
 /* ---------- 正在播放浮层 ---------- */
 body:has(.np.open) .playerbar { opacity: 0; transform: translateY(100%); pointer-events: none; }
-.np { position: fixed; inset: 0; z-index: 40; display: none; padding: 62px 64px 54px; }
-.np.open { display: block; animation: fade .35s var(--ease); }
+/* 详情页是沉浸层：自身必须完全不透明。以前只有一层中心 alpha .34 的径向渐变，
+   半透明封面上会透出侧栏昵称、页标题（搜索/声场）、顶栏曲名等主界面内容。 */
+.np { position: fixed; inset: 0; z-index: 40; display: none; padding: 62px 64px 54px; background: var(--bg); }
+.np.open { display: block; }
+/* 淡入只作用于内容：底色立即生效，0.35s 转场期间同样不会露出底层 UI。
+   不给 .np__bg 加动画——它的 opacity 由 data-mode 控制，动画会覆盖成 1 导致闪白。 */
+.np.open .np__inner,
+.np.open .np__close { animation: fade .35s var(--ease); }
 @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
 /* 歌词页背景（设置页可切：blur=封面模糊 / color=封面主色 / app=应用背景） */
 .np__bg { position: absolute; inset: 0; background-size: cover; background-position: center; z-index: 0; transition: background var(--dur-slow), opacity var(--dur-slow); }

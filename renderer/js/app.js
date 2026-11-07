@@ -1265,7 +1265,11 @@ async function deleteSheet(s) {
 // 「加入歌单」：右键菜单入口。没有歌单时先建一个，避免用户点了没反应
 async function openAddToSheetDialog(track, pos = null) {
   const sheets = store.getSheets();
-  if (!sheets.length) {
+  const st = accountState();
+  // 云端目标只对已登录、且是网易云曲目开放（QQ/酷狗的 id 写不进网易云歌单）
+  const cloudEnabled = track.source !== 'local' && st.loggedIn && st.online;
+  const cloudTargets = cloudEnabled ? await getOwnCloudPlaylists().catch(() => []) : [];
+  if (!sheets.length && !cloudEnabled) {
     const sheet = await createSheetInteractive();
     if (sheet) addTrackToSheet(sheet.id, track, sheet.name);
     return;
@@ -1278,7 +1282,15 @@ async function openAddToSheetDialog(track, pos = null) {
     run: () => toggleSheetTrack(s.id, track, s.name),
   }));
   items.push({ sep: true });
-  items.push({ text: '新建歌单…', iconName: 'plus', run: () => createAndAdd(track) });
+  items.push({ text: '新建本地歌单…', iconName: 'plus', run: () => createAndAdd(track) });
+  if (cloudEnabled) {
+    items.push({ sep: true });
+    items.push({ label: '云端歌单 · 写入网易云账号' });
+    cloudTargets.slice(0, 8).forEach((p) => items.push({
+      text: p.name, iconName: 'cloud', run: () => addTrackToCloudPlaylist(p, track),
+    }));
+    items.push({ text: '新建云端歌单…', iconName: 'plus', run: () => createCloudAndAdd(track) });
+  }
   openMenu(pos?.x ?? Math.round(window.innerWidth / 2), pos?.y ?? 140, items);
 }
 
@@ -1623,9 +1635,151 @@ async function importPlaylistByLink() {
   }
 }
 
-/* ---------------- 我的：云歌单（直接读账号，不落本机） ---------------- */
+/* ---------------- 我的：云歌单（直接读写网易云账号，不落本机） ---------------- */
 const cloudCache = { uid: '', list: [], at: 0 };
 const LIKED_ID = '__liked__';
+// 右键「加入歌单」也要能写云端：单独缓存自建歌单，避免每次开菜单都拉一次 /user/playlist
+const cloudOwnCache = { uid: '', list: [], at: 0 };
+
+function invalidateCloud() {
+  cloudCache.uid = '';
+  cloudCache.list = [];
+  cloudOwnCache.at = 0;
+}
+
+function cloudWritable() {
+  const st = accountState();
+  if (!st.loggedIn) { toast('请先登录网易云账号', 3500, 'error'); return false; }
+  if (!st.online) { toast('网易云接口不可达，云端歌单暂时只能浏览', 4000, 'error'); return false; }
+  return true;
+}
+
+async function getOwnCloudPlaylists() {
+  const st = accountState();
+  if (!st.loggedIn || !st.online) return [];
+  const uid = String((st.user && st.user.userId) || '');
+  if (!uid) return [];
+  if (cloudOwnCache.uid === uid && cloudOwnCache.list.length && Date.now() - cloudOwnCache.at < 60000) {
+    return cloudOwnCache.list;
+  }
+  const r = await api.userPlaylists(uid);
+  const list = ((r && r.playlist) || [])
+    .filter((p) => String((p.creator && p.creator.userId) || '') === uid)
+    .map((p) => ({ id: String(p.id), name: p.name || '未命名歌单' }));
+  cloudOwnCache.uid = uid;
+  cloudOwnCache.list = list;
+  cloudOwnCache.at = Date.now();
+  return list;
+}
+
+/** 云歌单卡片「更多」：只对自建歌单开放写操作，「我喜欢的音乐」由网易云自身维护 */
+function cloudCardMenu(pl) {
+  if (!pl || !pl.own || pl.id === LIKED_ID) return [];
+  return [
+    { label: pl.name },
+    { text: '打开', iconName: 'play', run: () => openPlaylist(pl) },
+    { text: '重命名', iconName: 'sheet', run: () => renameCloudPlaylist(pl) },
+    { sep: true },
+    { text: '删除云端歌单', iconName: 'trash', danger: true, run: () => deleteCloudPlaylist(pl) },
+  ];
+}
+
+async function createCloudPlaylist(after) {
+  if (!cloudWritable()) return null;
+  const name = await promptText({ title: '新建云端歌单', label: '歌单名称', placeholder: '例如：深夜写代码', okText: '创建', desc: '会直接创建到当前登录的网易云账号，手机端也能看到。' });
+  if (name === null || !name.trim()) return null;
+  try {
+    const r = await api.cloudPlaylistCreate(name.trim());
+    const id = String((r && (r.id || (r.playlist && r.playlist.id))) || '');
+    invalidateCloud();
+    toast(`已创建云端歌单「${name.trim()}」`);
+    if (currentRoute === 'mine' && mineTab === 'cloud') renderMine();
+    const created = { id, name: name.trim() };
+    if (after) await after(created);
+    return created;
+  } catch (e) {
+    toast('创建失败：' + (e.message || '接口不可用'), 5000, 'error');
+    return null;
+  }
+}
+
+async function renameCloudPlaylist(pl) {
+  if (!cloudWritable()) return;
+  const name = await promptText({ title: '重命名云端歌单', label: '歌单名称', value: pl.name, okText: '保存' });
+  if (name === null || !name.trim() || name.trim() === pl.name) return;
+  try {
+    await api.cloudPlaylistUpdate(pl.id, name.trim());
+    invalidateCloud();
+    toast('已重命名云端歌单');
+    if (currentRoute === 'mine') renderMine();
+    else if (currentRoute === 'playlist') renderPlaylist(String(pl.id), ++routeToken);
+  } catch (e) {
+    toast('重命名失败：' + (e.message || '接口不可用'), 4500, 'error');
+  }
+}
+
+async function deleteCloudPlaylist(pl) {
+  if (!cloudWritable()) return;
+  const ok = await confirmModal({
+    title: '删除云端歌单', danger: true, okText: '删除',
+    desc: `确定删除「${pl.name}」？这会同时从你的网易云账号里移除该歌单（含手机端），本机收藏与本地曲库不受影响。`,
+  });
+  if (!ok) return;
+  try {
+    await api.cloudPlaylistDelete(pl.id);
+    invalidateCloud();
+    toast('已删除云端歌单');
+    if (currentRoute === 'playlist') navigate('mine', 'cloud');
+    else renderMine();
+  } catch (e) {
+    toast('删除失败：' + (e.message || '接口不可用'), 5000, 'error');
+  }
+}
+
+function isNeteaseTrackId(t) { return /^\d+$/.test(String((t && t.id) || '')); }
+
+async function addTrackToCloudPlaylist(pl, track) {
+  if (!cloudWritable()) return;
+  if (!isNeteaseTrackId(track)) {
+    toast('这首歌不是网易云曲目，无法写入云端歌单', 4000, 'error');
+    return;
+  }
+  try {
+    await api.cloudPlaylistTracks(pl.id, [track.id], 'add');
+    invalidateCloud();
+    toast(`已加入云端歌单「${pl.name}」`);
+  } catch (e) {
+    toast('加入云端歌单失败：' + (e.message || '接口不可用'), 4500, 'error');
+  }
+}
+
+async function removeTrackFromCloudPlaylist(pid, track) {
+  if (!cloudWritable()) return false;
+  if (!isNeteaseTrackId(track)) {
+    toast('这首歌不是网易云曲目，无法从云端歌单移除', 4000, 'error');
+    return false;
+  }
+  try {
+    await api.cloudPlaylistTracks(pid, [track.id], 'del');
+    invalidateCloud();
+    toast('已从云端歌单移除');
+    return true;
+  } catch (e) {
+    toast('移除失败：' + (e.message || '接口不可用'), 4500, 'error');
+    return false;
+  }
+}
+
+async function createCloudAndAdd(track) {
+  await createCloudPlaylist(async (created) => {
+    if (created.id && isNeteaseTrackId(track)) {
+      try {
+        await api.cloudPlaylistTracks(created.id, [track.id], 'add');
+        invalidateCloud();
+      } catch (_) { /* 歌单已建好，加歌失败单独提示即可 */ }
+    }
+  });
+}
 
 function renderMineCloud(out) {
   const st = accountState();
@@ -1648,14 +1802,18 @@ function renderMineCloud(out) {
   info.appendChild(cnt);
   info.appendChild(el('span', {
     class: 'lib-toolbar__hint',
-    text: '直接在账号歌单上播放，只读不改动云端数据',
+    text: '可新建、重命名、删除自建歌单，曲目增删直接写入网易云账号',
   }));
   out.appendChild(el('div', { class: 'lib-toolbar' }, [
     info,
     el('div', { class: 'lib-toolbar__actions' }, [
       el('button', {
+        class: 'btn btn--small btn--primary',
+        onclick: () => createCloudPlaylist(),
+      }, [icon('plus'), '新建云端歌单']),
+      el('button', {
         class: 'btn btn--small',
-        onclick: () => { cloudCache.uid = ''; cloudCache.list = []; renderMine(); },
+        onclick: () => { invalidateCloud(); renderMine(); },
       }, [icon('refresh'), '刷新']),
     ]),
   ]));
@@ -1690,6 +1848,11 @@ function renderMineCloud(out) {
       trackCount: Number(p.trackCount || 0),
       own: String((p.creator && p.creator.userId) || '') === uid,
     }));
+    // 顺手喂给「加入歌单」菜单，省掉右键时再拉一次 /user/playlist
+    cloudOwnCache.uid = uid;
+    cloudOwnCache.list = cloudCache.list.filter((p) => p.own)
+      .map((p) => ({ id: String(p.id), name: p.name }));
+    cloudOwnCache.at = Date.now();
     // 用户可能已经切走：只在仍停留在云歌单页时重绘
     if (currentRoute !== 'mine' || mineTab !== 'cloud') return;
     renderMine();
@@ -1708,7 +1871,7 @@ function paintCloudLists(out, grid) {
   const own = cloudCache.list.filter((p) => p.own);
   const other = cloudCache.list.filter((p) => !p.own);
 
-  const section = (title, hint, list, open) => {
+  const section = (title, hint, list, open, withMenu = false) => {
     const sec = el('div', { class: 'cloud-section reveal' });
     const head = el('div', { class: 'guide-head' }, [
       el('div', { class: 'guide-head__main' }, [icon('sheet'), el('span', { text: title })]),
@@ -1716,15 +1879,15 @@ function paintCloudLists(out, grid) {
     ]);
     sec.appendChild(head);
     const g = el('div', { class: 'grid' });
-    renderPlaylistGrid(g, list, open);
+    renderPlaylistGrid(g, list, open, withMenu ? { menuFor: cloudCardMenu } : {});
     sec.appendChild(g);
     return sec;
   };
 
-  out.appendChild(section('我喜欢的音乐 / 我创建的歌单', `${own.length} 个 · 云端实时读取`, [
+  out.appendChild(section('我喜欢的音乐 / 我创建的歌单', `${own.length} 个 · 支持重命名与删除`, [
     { id: LIKED_ID, name: '我喜欢的音乐', picUrl: '', playCount: 0 },
     ...own.filter((p) => p.id !== LIKED_ID),
-  ], (pl) => (pl.id === LIKED_ID ? playLikedSongs() : openPlaylist(pl))));
+  ], (pl) => (pl.id === LIKED_ID ? playLikedSongs() : openPlaylist(pl)), true));
 
   if (other.length) {
     out.appendChild(section('我收藏的歌单', `${other.length} 个`, other, openPlaylist));
@@ -1858,6 +2021,11 @@ async function renderPlaylist(id, token) {
     if (token !== routeToken) return;
     const pl = detail.playlist || {};
     const songs = (tracksR.songs || []).map(normalizeTrack);
+    // 自己创建的云端歌单：允许直接改名、删除歌单、增删曲目（写回网易云账号）
+    const st = accountState();
+    const uid = String((st.user && st.user.userId) || '');
+    const isOwnCloud = !!(st.loggedIn && st.online && uid && pl.creator
+      && String(pl.creator.userId) === uid);
     view.innerHTML = '';
     view.appendChild(el('button', { class: 'backbtn', onclick: goBack }, [icon('chevron-left'), '返回']));
 
@@ -1879,6 +2047,12 @@ async function renderPlaylist(id, token) {
         el('button', { class: 'btn-ghost', onclick: () => addAllToQueue(songs) }, [icon('plus'), '加入队列']),
         el('button', { class: 'btn-ghost' + (store.isPinned(pl.id) ? ' is-on' : ''), onclick: () => toggleSubscribe(pl) },
           [icon(store.isPinned(pl.id) ? 'heart-fill' : 'heart'), store.isPinned(pl.id) ? '已收藏歌单' : '收藏歌单']),
+        ...(isOwnCloud ? [
+          el('button', { class: 'btn-ghost', onclick: () => renameCloudPlaylist({ id, name: pl.name || '歌单', own: true }) },
+            [icon('sheet'), '重命名']),
+          el('button', { class: 'btn-ghost', onclick: () => deleteCloudPlaylist({ id, name: pl.name || '歌单', own: true }) },
+            [icon('trash'), '删除歌单']),
+        ] : []),
       ]),
     ]);
     view.appendChild(el('div', { class: 'pl-hero reveal' }, [coverEl, body]));
@@ -1891,11 +2065,21 @@ async function renderPlaylist(id, token) {
         el('button', { class: 'linkbtn', onclick: () => navigate('search') }, '继续搜索'),
       ]));
       // 客户端分页：队列上下文用全量 songs，页面展示当前页
+      const removeFromCloud = async (track) => {
+        if (await removeTrackFromCloudPlaylist(id, track)) renderPlaylist(id, ++routeToken);
+      };
       const { list, pager: pg } = paginatedTrackList(songs, plPage, {
         onPlay: (all, i) => playCollection(all, i),
         showAlbum: songs.some((s) => s.album),
         onAddQueue: addQueueWithToast,
-        onMenu: (t, i, pos) => openTrackMenu(t, i, pos, { scope: songs }),
+        onMenu: (t, i, pos) => openTrackMenu(t, i, pos, {
+          scope: songs,
+          ...(isOwnCloud ? { onRemove: removeFromCloud, removeTitle: '从云端歌单移除' } : {}),
+        }),
+        ...(isOwnCloud ? {
+          onRemove: (all, i) => removeFromCloud(all[i]),
+          removeTitle: '从云端歌单移除',
+        } : {}),
         onPage: (p) => { plPage = p; renderPlaylist(id, ++routeToken); $('view').scrollTop = 0; },
       });
       view.appendChild(list);
