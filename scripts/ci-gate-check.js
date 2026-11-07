@@ -75,7 +75,7 @@ ok('清空 GUMAN_NP_URL，聚合测试不依赖外部服务', /delete env\.GUMAN
 ok('明确排除需要 Electron / 浏览器的脚本', /ui-smoke|cache-check|cover-lyric-check/.test(all));
 ok('check-syntax 覆盖主进程与预加载', ['main.js', 'main-log.js', 'preload.js'].every((f) => syntax.includes(f)));
 ok('check-syntax 覆盖 server / renderer/js / scripts', ['server', 'renderer/js', 'scripts'].every((d) => syntax.includes(`'${d}'`)));
-ok('check-syntax 覆盖动态打包配置', syntax.includes('electron-builder.js'));
+ok('check-syntax 覆盖动态打包配置', syntax.includes('electron-builder.config.js'));
 ok('check-syntax 失败即退出非零', /process\.exitCode\s*=\s*1/.test(syntax));
 
 console.log('— 签名凭据注入 —');
@@ -84,6 +84,10 @@ ok('macOS 打包 step 注入 CSC_LINK / CSC_NAME', /secrets\.MAC_CSC_LINK/.test(
 ok('macOS 打包 step 注入 Apple 公证凭据', ['APPLE_ID', 'APPLE_APP_SPECIFIC_PASSWORD', 'APPLE_TEAM_ID', 'APPLE_API_KEY'].every((k) => release.includes('secrets.' + k)));
 ok('证书自动发现改为按凭据条件开启', /CSC_IDENTITY_AUTO_DISCOVERY:\s*\$\{\{/.test(release));
 ok('无凭据时不强制签名（构建照常）', /secrets\.MAC_CSC_LINK != ''/.test(release));
+ok('三平台打包命令都显式指定动态配置（-c）',
+  (release.match(/npx electron-builder -c electron-builder\.config\.js/g) || []).length === 3);
+ok('不存在与 CLI 同名、会被 npx 静默执行的 electron-builder.js',
+  !require('fs').existsSync(path.join(ROOT, 'electron-builder.js')));
 
 console.log('— 版本一致性 —');
 const readme = read('README.md');

@@ -16,7 +16,7 @@
 
 ## 配置是怎么工作的
 
-`electron-builder.js`（替换了原来的静态 `electron-builder.yml`）导出一个函数，按环境变量动态生成配置：
+`electron-builder.config.js`（替换了原来的静态 `electron-builder.yml`）导出一个函数，按环境变量动态生成配置：
 
 | 环境变量状态 | Windows | macOS |
 |---|---|---|
@@ -27,6 +27,8 @@
 `hardenedRuntime` 在无证书时必须保持 `false`：ad-hoc 签名叠加 hardened runtime 会因 library validation 让应用启动即崩。`build/entitlements.mac.plist` / `.inherit.plist` 提供 Electron 必需的 `allow-jit`、`disable-library-validation` 等权限，electron-builder 会自动加载。
 
 状态可用 `GUMAN_SIGN_DEBUG=1` 打印（只打印布尔值，不打印任何凭据）。`npm run check:signing` 会在任意凭据组合下回归这套状态机。
+
+> **为什么配置文件叫 `electron-builder.config.js` 而不是 `electron-builder.js`**：根目录若存在与 CLI 同名的 `electron-builder.js`，`npx electron-builder` 以及 npm scripts 里的 `electron-builder` 会把它当作要执行的本地脚本——配置文件只导出函数、没有任何副作用，于是命令静默 `exit 0` 却一个包都不打（主干 CI 实测踩到过：`dist/*.exe` 不存在）。因此所有打包命令都显式带 `-c electron-builder.config.js`，`npm run check:signing` 也把「根目录不得存在同名文件 + 所有命令必须带 `-c`」锁成了断言。
 
 ---
 
@@ -92,7 +94,7 @@
    ```bash
    export CSC_LINK="$(base64 -i cert.p12)" CSC_KEY_PASSWORD='******'
    export APPLE_API_KEY="$(base64 -i AuthKey_XXX.p8)" APPLE_API_KEY_ID=XXX APPLE_API_ISSUER=xxx
-   npx electron-builder --mac --publish never
+   npx electron-builder -c electron-builder.config.js --mac --publish never
    codesign -dv --verbose=4 "dist/mac-arm64/孤男音乐.app" 2>&1 | grep -E 'Authority|TeamIdentifier|flags'
    spctl -a -vv "dist/mac-arm64/孤男音乐.app"      # 期望 accepted
    xcrun stapler validate "dist/GumanMusic-1.4.3-arm64.dmg"
@@ -129,7 +131,7 @@ npm run dist
 
 ## 五、安全约定
 
-- 证书、私钥、Apple 凭据**只从环境变量 / GitHub Secrets 读取**，绝不写进 `electron-builder.js`、workflow 或任何提交文件；
+- 证书、私钥、Apple 凭据**只从环境变量 / GitHub Secrets 读取**，绝不写进 `electron-builder.config.js`、workflow 或任何提交文件；
 - `.gitignore` 忽略 `*.pfx`、`*.p12`、`*.cer`、`*.pvk`、`*.key`、`.env*`；
 - `GUMAN_SIGN_DEBUG` 只输出布尔状态；CI 日志不会打印凭据（GitHub 也会自动掩码 secret）；
 - `npm run check:signing` 与 `npm run check:ci-gate` 可离线验证上述全部契约。

@@ -39,7 +39,7 @@ v1.4.2 收尾时剩下两件事：安装包未签名、CI 无测试门禁。本�
 
 ### 实现
 
-- `electron-builder.yml` → **`electron-builder.js`**：electron-builder 支持配置文件导出函数，于是可以按环境变量动态生成配置，不必维护两份文件、也不会破坏无证书构建。
+- `electron-builder.yml` → **`electron-builder.config.js`**：electron-builder 支持配置文件导出函数，于是可以按环境变量动态生成配置，不必维护两份文件、也不会破坏无证书构建。
 
 | 环境变量状态 | Windows | macOS |
 |---|---|---|
@@ -55,7 +55,12 @@ v1.4.2 收尾时剩下两件事：安装包未签名、CI 无测试门禁。本�
 
 完整申请、导出、配置 Secrets、本地验证（`Get-AuthenticodeSignature` / `codesign` / `spctl` / `xcrun stapler`）与故障排查见 [docs/code-signing.md](code-signing.md)。
 
-`scripts/signing-check.js`（47 项）覆盖：状态机 9 类凭据组合、无证书/有证书/只签不公证三种配置产物、`signtoolOptions` 嵌套、entitlements 完整性、证书绝不入库、CI secrets 接线。
+`scripts/signing-check.js`（52 项）覆盖：状态机 9 类凭据组合、无证书/有证书/只签不公证三种配置产物、`signtoolOptions` 嵌套、entitlements 完整性、证书绝不入库、CI secrets 接线，以及配置命名与打包命令的 `-c` 契约。
+
+### 两个实测踩到的坑
+
+1. **electron-builder 26 的签名参数位置**：`signingHashAlgorithms` / `rfc3161TimeStampServer` 必须放在 `win.signtoolOptions` 下，放 `win` 顶层会被 schema 拒绝（`configuration.win should be one of these: null`）。本地真实打包烟测发现并修正。
+2. **配置文件不能与 CLI 同名**：最初命名为 `electron-builder.js`，结果 `npx electron-builder` / `npm run dist` 会把它当成要执行的本地脚本，静默 `exit 0` 却不出包——主干 CI 的「上传安装包产物」报 `dist/*.exe` 不存在，提前暴露。改名为 `electron-builder.config.js` 并在所有打包命令显式 `-c`，`check:signing` 增加了防回归断言。
 
 ## 三、验证
 
@@ -63,9 +68,9 @@ v1.4.2 收尾时剩下两件事：安装包未签名、CI 无测试门禁。本�
 |---|---|
 | `npm run check:syntax` | 65 个 JS 文件全部通过 |
 | `npm run check:all` | 12/12 脚本通过，0 失败 |
-| 本地真实打包烟测 | `electron-builder --win --dir` **exit 0**，日志确认 `loaded configuration file=electron-builder.js`，无证书状态机全关，产物正常生成 |
-| 配置加载器实测 | `getConfig()` 返回 `configFile=electron-builder.js`，appId / 产物名 / publish 全部与旧 yml 等价 |
-| 全量断言 | **426 → 516**（新增 signing-check 47 + ci-gate-check 43） |
+| 本地真实打包烟测 | 干净输出目录下 `electron-builder --win --dir` **exit 0**、产物正常生成；改名后复跑确认 `• electron-builder version=26.15.3`、`[builder] signing state: {"win":false,...}`、`loaded configuration file=electron-builder.config.js`，并进入 packaging（本轮复跑因沙箱对临时目录的批量删除保护中断，非代码问题，完整打包以主干 CI 的 `npm run dist` 为准） |
+| 配置加载器实测 | `getConfig()` 返回 `configFile=electron-builder.config.js`，appId / 产物名 / publish 全部与旧 yml 等价 |
+| 全量断言 | **426 → 523**（新增 signing-check 52 + ci-gate-check 45） |
 
 ## 四、待办
 
@@ -78,12 +83,12 @@ v1.4.2 收尾时剩下两件事：安装包未签名、CI 无测试门禁。本�
 
 | 文件 | 变更 |
 |---|---|
-| `electron-builder.js` | **新增**（替代 `electron-builder.yml`）：按凭据动态生成签名配置 |
+| `electron-builder.config.js` | **新增**（替代 `electron-builder.yml`）：按凭据动态生成签名配置；命名刻意避开与 CLI 同名 |
 | `electron-builder.yml` | 删除（避免 yml 优先导致 JS 配置永不生效） |
 | `build/entitlements.mac.plist`、`.inherit.plist` | 新增：hardened runtime 下 Electron 必需权限 |
 | `.github/workflows/release.yml` | 新增 `test` 门禁 job、三平台与发布依赖它、注入全部签名 secrets |
 | `.github/workflows/ci.yml` | 复用 `check:syntax` / `check:all`，测试清单单一来源 |
 | `scripts/check-syntax.js`、`check-all.js` | 新增：跨平台语法检查 + 发版门禁聚合器 |
-| `scripts/signing-check.js`、`ci-gate-check.js` | 新增 90 项契约断言 |
+| `scripts/signing-check.js`、`ci-gate-check.js` | 新增 97 项契约断言 |
 | `docs/code-signing.md`、本文件 | 新增签名接入指南与发布说明 |
-| `.gitignore`、`package.json`、README、README_EN | 证书忽略规则、4 个 check 命令、版本 1.4.3、测试数 516、路线图与 FAQ 更新 |
+| `.gitignore`、`package.json`、README、README_EN | 证书忽略规则、4 个 check 命令、打包命令显式 `-c`、版本 1.4.3、测试数 523、路线图与 FAQ 更新 |

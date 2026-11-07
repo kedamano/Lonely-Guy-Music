@@ -10,7 +10,7 @@ NetEase online library · LX Music custom sources · Live spectrum · Karaoke ly
 
 [![Version](https://img.shields.io/badge/version-1.4.3-ff6a2c?style=flat-square)](https://github.com/kedamano/Lonely-Guy-Music/releases)
 [![Electron](https://img.shields.io/badge/Electron-44-47848F?style=flat-square&logo=electron&logoColor=white)](https://www.electronjs.org/)
-[![Tests](https://img.shields.io/badge/tests-516%20checks-passing-3fb950?style=flat-square)](#-ui-regression-tests)
+[![Tests](https://img.shields.io/badge/tests-523%20checks-passing-3fb950?style=flat-square)](#-ui-regression-tests)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-8957e5?style=flat-square)](https://github.com/kedamano/Lonely-Guy-Music/releases)
 [![License](https://img.shields.io/badge/license-MIT-c9d1d9?style=flat-square)](LICENSE)
 
@@ -292,7 +292,7 @@ Every platform-resolution candidate is first probed with `Range: bytes=0-65535`:
 
 ## 🧪 UI Regression Tests
 
-Playwright-based real-interaction regression (**516 assertions** total):
+Playwright-based real-interaction regression (**523 assertions** total):
 
 ```bash
 npm start                        # or ENABLE_NCM=0 node server/index.js
@@ -310,8 +310,8 @@ node scripts/platform-auth-check.js # 47 platform sign-in checks (cookie parse +
 node scripts/cloud-playlist-check.js # 47 cloud-playlist editing checks (NCM write contract + cache invalidation + UI wiring)
 node scripts/np-overlay-check.js # 26 now-playing isolation checks (opaque base + stacking + no bleed during fade + queue/mini regressions)
 GUMAN_NP_URL=http://127.0.0.1:3000/ node scripts/np-overlay-check.js # adds 7 real-Chromium hit-test checks
-node scripts/signing-check.js # 47 signing-config checks (state machine + entitlements + no certs in repo + CI wiring)
-node scripts/ci-gate-check.js # 43 release-gate contracts (needs graph + aggregation list + secrets wiring)
+node scripts/signing-check.js # 52 signing-config checks (state machine + entitlements + no certs in repo + CI wiring + config naming)
+node scripts/ci-gate-check.js # 45 release-gate contracts (needs graph + aggregation list + secrets wiring)
 npm run check:syntax        # syntax-check 65 JS files (cross-platform, Node-based)
 npm run check:all           # release gate: aggregates 12 node-only scripts, fails on any error
 npx electron scripts/tray-check.js # 5 tray icon checks (ICO empty-image regression + real bounds)
@@ -337,7 +337,7 @@ Covers: live search / tab switching / playback / seek dragging / favorites / que
 - [x] **Default sound sources (built-in) + LX list auto-probe**: on first launch auto-imports and enables the five community sources (SixYin / LX-Official / Flower / Huibq / JuheApi); periodically probes the lxmusic.ijinshan.com source list to sync the latest addresses; settings page can trigger an immediate update
 - [x] **Cloud playlist editing + QQ sign-in UI**: create / rename / delete cloud playlists and add / remove tracks from the client, written straight back to NetEase; paste a QQ Music cookie in Settings to auto-extract `uin` / `qm_keyst` — no more editing `platform-auth.json` by hand
 - [x] **Release test gate**: a `test` job (syntax check + 12 node-only regression scripts) runs inside the tag-triggered release workflow; all three platform builds and the publish job `need` it — no package is produced when tests fail
-- [x] **Code signing / notarization pipeline**: `electron-builder.js` conditionally enables Windows SHA256 + RFC3161 timestamp signing and macOS Developer ID + hardened runtime + notarization; builds degrade to unsigned automatically when no certificate is configured, and no certificate ever enters the repo
+- [x] **Code signing / notarization pipeline**: `electron-builder.config.js` conditionally enables Windows SHA256 + RFC3161 timestamp signing and macOS Developer ID + hardened runtime + notarization; builds degrade to unsigned automatically when no certificate is configured, and no certificate ever enters the repo
 
 ---
 

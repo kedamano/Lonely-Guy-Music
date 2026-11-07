@@ -14,7 +14,7 @@
 
 ![Electron](https://img.shields.io/badge/Electron-44-47848F?style=flat-square\&logo=electron\&logoColor=white)
 
-![Tests](https://img.shields.io/badge/tests-516%20checks-passing-3fb950?style=flat-square)
+![Tests](https://img.shields.io/badge/tests-523%20checks-passing-3fb950?style=flat-square)
 
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-8957e5?style=flat-square)
 
@@ -331,7 +331,7 @@ QQ / 酷狗 / 酷我 / 咪咕曲目的播放地址不强依赖网易云，也不
 
 ## 🧪 UI 回归测试
 
-基于 Playwright 的真实交互回归（共 **516 项断言**）：
+基于 Playwright 的真实交互回归（共 **523 项断言**）：
 
 ```bash
 npm start                        # 或 ENABLE_NCM=0 node server/index.js
@@ -349,8 +349,8 @@ node scripts/platform-auth-check.js # 47 项平台登录态（Cookie 解析 + �
 node scripts/cloud-playlist-check.js # 47 项云端歌单编辑（NCM 写接口契约 + 缓存失效 + UI 接线）
 node scripts/np-overlay-check.js # 26 项详情页隔离（不透明底色 + 层叠层级 + 淡入不露底 + 队列/迷你模式不回归）
 GUMAN_NP_URL=http://127.0.0.1:3000/ node scripts/np-overlay-check.js # 另加 7 项真实 Chromium 命中测试
-node scripts/signing-check.js    # 47 项签名配置（状态机 + entitlements + 证书不入库 + CI 注入）
-node scripts/ci-gate-check.js    # 43 项发版门禁契约（needs 依赖 + 聚合清单 + secrets 注入）
+node scripts/signing-check.js    # 52 项签名配置（状态机 + entitlements + 证书不入库 + CI 注入 + 配置命名）
+node scripts/ci-gate-check.js    # 45 项发版门禁契约（needs 依赖 + 聚合清单 + secrets 注入）
 npm run check:syntax             # 65 个 JS 文件语法检查（跨平台，Node 实现）
 npm run check:all               # 发版门禁：聚合 12 个 node-only 回归脚本，任一失败即退出非零
 npx electron scripts/tray-check.js # 5 项托盘图标（ICO 空图回归 + 真实托盘坐标）
@@ -375,7 +375,7 @@ node scripts/cache-e2e.js         # 7 项真机存储区验证（需图形界面
 - [x] **默认音源出厂内置 + 洛雪列表定时探测**：首次启动自动导入六音 / LX官方 / Flower / Huibq / JuheApi 五个社区音源并启用，定时探测 lxmusic.ijinshan.com 音源列表页同步最新地址，设置页可手动立即更新
 - [x] **歌单双向编辑 + QQ 登录 UI**：客户端内新建 / 重命名 / 删除云端歌单，云端歌单加歌与移出歌曲，改动实时写回网易云账号；设置页粘贴 QQ Cookie 自动提取 `uin` / `qm_keyst`，保存即生效，不再需要手改 `platform-auth.json`
 - [x] **发版测试门禁**：tag 触发的 release 流水线自带 `test` job（语法检查 + 12 个 node-only 回归脚本），三平台构建与发布均 `needs: test`，测试不过绝不出包
-- [x] **代码签名 / 公证链路**：`electron-builder.js` 按凭据动态启用 Windows SHA256 + RFC3161 时间戳签名、macOS Developer ID + hardened runtime + 公证；未配置证书时自动降级为未签名构建，证书绝不入库
+- [x] **代码签名 / 公证链路**：`electron-builder.config.js` 按凭据动态启用 Windows SHA256 + RFC3161 时间戳签名、macOS Developer ID + hardened runtime + 公证；未配置证书时自动降级为未签名构建，证书绝不入库
 
 已支持 ✅：应用内自动更新（`electron-updater` + GitHub Releases 源，发布新版本后启动即提示）
 

@@ -20,11 +20,12 @@ function ok(name, cond, extra) {
   else { failed++; console.error('  ✗', name, extra != null ? '→ ' + JSON.stringify(extra) : ''); }
 }
 
-const cfg = require('../electron-builder.js');
+const cfg = require('../electron-builder.config.js');
 const state = cfg.__signingState;
-const src = read('electron-builder.js');
+const src = read('electron-builder.config.js');
 const release = read('.github/workflows/release.yml');
 const gitignore = read('.gitignore');
+const pkg = require('../package.json');
 
 const SIGN_KEYS = [
   'CSC_LINK', 'WIN_CSC_LINK', 'MAC_CSC_LINK', 'CSC_NAME', 'CSC_KEY_PASSWORD',
@@ -49,7 +50,7 @@ function buildWith(extra = {}) {
 const clean = (extra) => state(extra);
 
 console.log('— 配置文件形态 —');
-ok('electron-builder.js 存在', exists('electron-builder.js'));
+ok('electron-builder.config.js 存在', exists('electron-builder.config.js'));
 ok('配置导出为函数（支持按 env 动态生成）', typeof cfg === 'function');
 ok('导出 __signingState 纯函数供测试', typeof state === 'function');
 ok('旧 electron-builder.yml 已删除（否则 yml 优先，JS 永远不生效）', !exists('electron-builder.yml'));
@@ -121,6 +122,17 @@ ok('release.yml 注入 WIN_CSC_LINK / MAC_CSC_LINK', release.includes('secrets.W
 ok('release.yml 注入 CSC_KEY_PASSWORD', release.includes('secrets.WIN_CSC_KEY_PASSWORD') && release.includes('secrets.MAC_CSC_KEY_PASSWORD'));
 ok('release.yml 注入 Apple 公证三件套', ['APPLE_ID', 'APPLE_APP_SPECIFIC_PASSWORD', 'APPLE_TEAM_ID'].every((k) => release.includes('secrets.' + k)));
 ok('release.yml 不再无条件关闭证书自动发现', !/CSC_IDENTITY_AUTO_DISCOVERY:\s*'false'/.test(release));
+
+console.log('— 配置命名与命令接线（防 CLI 同名静默）—');
+// 根目录若出现 electron-builder.js，npx electron-builder / npm run dist 会把它当成
+// 要执行的本地脚本（导出函数、无副作用 → exit 0 却什么包都不打）。主干 CI 实测踩过。
+ok('根目录不存在与 CLI 同名的 electron-builder.js', !exists('electron-builder.js'));
+ok('配置文件使用 electron-builder.config.js', exists('electron-builder.config.js'));
+ok('package.json 三个 dist 命令都显式 -c',
+  ['dist', 'dist:dir', 'dist:publish'].every((k) => (pkg.scripts[k] || '').includes('-c electron-builder.config.js')));
+ok('release.yml 三平台打包命令都显式 -c',
+  (release.match(/npx electron-builder -c electron-builder\.config\.js/g) || []).length === 3);
+ok('code-signing.md 本地打包示例也带 -c', read('docs/code-signing.md').includes('npx electron-builder -c electron-builder.config.js'));
 
 console.log(`\n${failed ? '✗' : '✓'} signing-check: ${passed} passed, ${failed} failed\n`);
 if (failed) process.exitCode = 1;

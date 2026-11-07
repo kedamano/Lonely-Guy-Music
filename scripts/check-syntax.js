@@ -11,7 +11,7 @@ const cp = require('child_process');
 const ROOT = path.join(__dirname, '..');
 const files = new Set();
 
-for (const rel of ['main.js', 'main-log.js', 'preload.js', 'assets/icon.js', 'electron-builder.js']) {
+for (const rel of ['main.js', 'main-log.js', 'preload.js', 'assets/icon.js', 'electron-builder.config.js']) {
   if (fs.existsSync(path.join(ROOT, rel))) files.add(rel);
 }
 

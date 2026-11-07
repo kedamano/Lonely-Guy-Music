@@ -81,11 +81,11 @@ jobs:
           # electron-builder 会照常产出未签名包。见 docs/code-signing.md
           CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
-        run: npx electron-builder --win nsis --publish never
+        run: npx electron-builder -c electron-builder.config.js --win nsis --publish never
 
       - name: 打包（macOS）
         if: matrix.platform == 'mac'
-        run: npx electron-builder --mac --publish never
+        run: npx electron-builder -c electron-builder.config.js --mac --publish never
         env:
           CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
@@ -104,7 +104,7 @@ jobs:
 
       - name: 打包（Linux）
         if: matrix.platform == 'linux'
-        run: npx electron-builder --linux --publish never
+        run: npx electron-builder -c electron-builder.config.js --linux --publish never
 
       - name: 上传构建产物
         uses: actions/upload-artifact@v4
