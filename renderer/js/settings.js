@@ -88,6 +88,13 @@ const HEALTH_INTERVALS = [
 
 const HEALTH_LABELS = { ok: '正常', warn: '受限', down: '不可用', unknown: '未探测' };
 
+const PROBE_INTERVALS = [
+  { key: '0', label: '不自动' },
+  { key: '360', label: '6 小时' },
+  { key: '720', label: '12 小时' },
+  { key: '1440', label: '每天' },
+];
+
 const SHORTCUTS = [
   ['空格', '播放 / 暂停'],
   ['← / →', '快退 / 快进 5 秒'],
@@ -111,7 +118,7 @@ export class SettingsView {
   async init() {
     this.container.innerHTML = '';
     this.renderSkeleton();
-    await Promise.all([this.load(), this.loadTranslate(), this.loadDownload(), this.loadHealth()]);
+    await Promise.all([this.load(), this.loadTranslate(), this.loadDownload(), this.loadHealth(), this.loadSoundSources()]);
     // 状态行与占位符是接口回来后才写入的，首屏那次 applyLang 看不到它们
     this.refreshLang();
   }
@@ -617,6 +624,28 @@ export class SettingsView {
     sourceSec.appendChild(this.sourceList);
     wrap.appendChild(sourceSec);
 
+    /* ---------- 默认音源（自动同步） ---------- */
+    const dsSec = this.section('默认音源', '出厂内置的社区音源（六音 / LX官方 / Flower / Huibq / JuheApi）。开启后会定时探测洛雪音源列表页，自动同步最新地址，无需手动导入；也能在「自定义源管理」里手动增删。');
+    this.dsToggle = this.serverToggle(dsSec, {
+      label: '定时探测并同步', desc: '关闭后只在手动更新时探测；自动导入失败时不影响播放',
+      get: () => !!(this.dsCfg && this.dsCfg.autoEnabled),
+      set: async (v) => { this.dsCfg = await api.soundSourcesConfig({ enabled: v }); this.renderSoundSources(); },
+    });
+    this.dsSeg = this.serverSeg(dsSec, {
+      label: '探测间隔',
+      options: PROBE_INTERVALS,
+      get: () => String(this.dsCfg ? this.dsCfg.config.intervalMinutes : 360),
+      set: async (v) => { this.dsCfg = await api.soundSourcesConfig({ intervalMinutes: Number(v) }); },
+    });
+    this.dsNote = el('div', { class: 'settings__desc settings__proxystatus', text: '读取中…' });
+    dsSec.appendChild(this.dsNote);
+    this.dsList = el('div', { class: 'settings__list' });
+    dsSec.appendChild(this.dsList);
+    dsSec.appendChild(el('div', { class: 'settings__item-ctrl settings__actions' }, [
+      el('button', { class: 'btn btn--small btn--primary', onclick: () => this.onSoundSourcesProbe() }, [icon('refresh'), '立即更新音源列表']),
+    ]));
+    wrap.appendChild(dsSec);
+
     /* ---------- 播放与快捷键 ---------- */
     const helpSec = this.section('播放与快捷键', '支持系统媒体键与托盘控制。以下快捷键在非输入状态下生效。');
     SHORTCUTS.forEach(([key, desc]) => {
@@ -940,6 +969,57 @@ export class SettingsView {
     ]));
     actions.forEach((a) => row.appendChild(a));
     return row;
+  }
+
+  async loadSoundSources() {
+    try {
+      const d = await api.soundSources();
+      this.dsCfg = d;
+      this.renderSoundSources();
+    } catch (_) {
+      if (this.dsNote) this.dsNote.textContent = '默认音源状态读取失败（不影响播放）';
+    }
+  }
+
+  renderSoundSources() {
+    const h = this.dsCfg;
+    if (!h) return;
+    [this.dsToggle].forEach((s) => s && s.paint && s.paint());
+    [this.dsSeg].forEach((s) => s && s.paint && s.paint());
+    if (this.dsNote) {
+      const at = h.lastProbeAt ? new Date(h.lastProbeAt).toLocaleString() : '';
+      this.dsNote.textContent = h.lastProbeAt
+        ? `上次探测：${at}${h.lastProbeError ? `　失败：${h.lastProbeError}` : '　成功'}`
+          + `${h.updatedAt ? `　页面更新于 ${h.updatedAt}` : ''}`
+          + (h.config.enabled ? `　每 ${h.config.intervalMinutes} 分钟自动同步` : '　定时探测已关闭')
+        : '还没有探测结果，可点下方「立即更新音源列表」。';
+    }
+    if (!this.dsList) return;
+    this.dsList.innerHTML = '';
+    (h.sources || []).forEach((s) => {
+      const status = !s.imported ? '未导入' : (s.upToDate ? '已是最新' : '地址已更新');
+      const dot = !s.imported ? 'unknown' : (s.upToDate ? 'ok' : 'warn');
+      this.dsList.appendChild(this.itemRow({
+        dot,
+        name: `${s.name} · ${status}`,
+        meta: `${s.maintainer ? s.maintainer + '　' : ''}${s.url}`,
+      }));
+    });
+    this.refreshLang();
+  }
+
+  async onSoundSourcesProbe() {
+    if (this.dsNote) this.dsNote.textContent = '正在探测洛雪音源列表页…';
+    try {
+      const r = await api.soundSourcesProbe(true);
+      this.dsCfg = r;
+      this.renderSoundSources();
+      const synced = r.sync || {};
+      const added = (synced.imported || []).length + (synced.updated || []).length;
+      this.onToast(added ? `已同步 ${added} 个音源` : '音源列表已是最新');
+    } catch (e) {
+      if (this.dsNote) this.dsNote.textContent = `探测失败：${e.message}`;
+    }
   }
 
   async onHealthCheck() {

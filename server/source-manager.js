@@ -1078,6 +1078,7 @@ module.exports = {
   resolveSearch,
   resolveAction,
   requestAsync,
+  safeId,
   QUALITY_ORDER,
   SOURCE_TIMEOUT_MS,
   __test: {

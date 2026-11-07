@@ -8,9 +8,9 @@
 
 NetEase online library · LX Music custom sources · Live spectrum · Karaoke lyrics · 10-band EQ · Desktop lyrics · Local music
 
-[![Version](https://img.shields.io/badge/version-1.4.0-ff6a2c?style=flat-square)](https://github.com/kedamano/Lonely-Guy-Music/releases)
+[![Version](https://img.shields.io/badge/version-1.4.1-ff6a2c?style=flat-square)](https://github.com/kedamano/Lonely-Guy-Music/releases)
 [![Electron](https://img.shields.io/badge/Electron-44-47848F?style=flat-square&logo=electron&logoColor=white)](https://www.electronjs.org/)
-[![Tests](https://img.shields.io/badge/tests-289%20checks-passing-3fb950?style=flat-square)](#-ui-regression-tests)
+[![Tests](https://img.shields.io/badge/tests-306%20checks-passing-3fb950?style=flat-square)](#-ui-regression-tests)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-8957e5?style=flat-square)](https://github.com/kedamano/Lonely-Guy-Music/releases)
 [![License](https://img.shields.io/badge/license-MIT-c9d1d9?style=flat-square)](LICENSE)
 
@@ -302,6 +302,7 @@ node scripts/platform-url-check.js # 19 platform resolution (scoring + Kugou lin
 node scripts/version-check.js     # 5 version-string contract checks
 node scripts/source-search-check.js # 23 LX-source search checks (parallel fallback + capabilities + Qishui)
 node scripts/lx-url-validate-check.js # 10 LX-source URL validation checks (dead-link block + source fallback + negative cache)
+node scripts/sound-sources-check.js # 17 default-sound-source checks (page parse + idempotent auto-import + URL-change update)
 npx electron scripts/tray-check.js # 5 tray icon checks (ICO empty-image regression + real bounds)
 npx electron scripts/cache-check.js # 7 disk-cache checks (write → measure → clear → idempotent)
 node scripts/cache-e2e.js         # 7 on-device storage checks (needs a GUI, full IPC path)
@@ -322,6 +323,7 @@ Covers: live search / tab switching / playback / seek dragging / favorites / que
 - [x] **Offline download manager**: download online songs with lyrics & cover into the local library — playable offline when the network or upstream is down; configurable path, naming, and quota auto-cleanup
 - [x] **Platform health probes**: periodic probes of each platform's search/link health, persisted; a first-screen banner shows which platform broke and since when, with a settings dashboard and manual "check now"
 - [x] **LX-source URL validation & auto-fallback**: resolved links are content-probed; dead/expired links fail over to the next source, and total failure falls back to native + cross-platform resolution; a failed playback auto-retries with source switching
+- [x] **Default sound sources (built-in) + LX list auto-probe**: on first launch auto-imports and enables the five community sources (SixYin / LX-Official / Flower / Huibq / JuheApi); periodically probes the lxmusic.ijinshan.com source list to sync the latest addresses; settings page can trigger an immediate update
 - [ ] Two-way playlist editing (add/remove cloud playlists in-app)
 
 ---

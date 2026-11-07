@@ -25,6 +25,7 @@ const platformUrl = require('./platform-url');
 const ncmClient = require('./ncm-client');
 const healthProbe = require('./health-probe');
 const download = require('./download');
+const soundSources = require('./sound-sources');
 
 // 监听地址：仅本机回环。/api 会注入登录 cookie，绑 0.0.0.0 会把它暴露给整个局域网。
 const HOST_BIND = process.env.HOST_BIND || '127.0.0.1';
@@ -278,6 +279,37 @@ app.post('/api/platform/health/config', (req, res) => {
   }
 });
 
+// ============== 默认音源（出厂内置 + 洛雪列表定时探测） ==============
+
+app.get('/api/sound-sources', (req, res) => {
+  try {
+    res.json({ code: 0, data: soundSources.snapshot(), online });
+  } catch (e) {
+    res.status(500).json({ code: 500, msg: e.message });
+  }
+});
+
+app.post('/api/sound-sources/probe', async (req, res) => {
+  try {
+    const force = !!(req.body && req.body.force);
+    const data = await Promise.race([
+      soundSources.probe(force),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('探测超时')), 60000)),
+    ]);
+    res.json({ code: 0, data, online });
+  } catch (e) {
+    res.status(502).json({ code: 502, msg: e.message || '音源列表探测失败' });
+  }
+});
+
+app.post('/api/sound-sources/config', (req, res) => {
+  try {
+    res.json({ code: 0, data: soundSources.saveConfig(req.body || {}) });
+  } catch (e) {
+    res.status(400).json({ code: 400, msg: e.message });
+  }
+});
+
 // ============== 账号 API（凭证不出后端） ==============
 
 app.get('/api/account/state', (req, res) => {
@@ -517,7 +549,7 @@ app.get('/api/local', (req, res) => {
 
 // 这些路径由上方专用路由处理，或由后端自己调用上游，不走通配反代
 const RESERVED = ['/api/__mode', '/api/proxy', '/api/local', '/api/translate', '/api/download'];
-const isReserved = (p) => RESERVED.includes(p) || p.startsWith('/api/sources') || p.startsWith('/api/account')
+const isReserved = (p) => RESERVED.includes(p) || p.startsWith('/api/sources') || p.startsWith('/api/account') || p.startsWith('/api/sound-sources')
   || p.startsWith('/api/library') || p.startsWith('/api/platform') || p.startsWith('/api/cache') || p.startsWith('/api/download');
 // 登录类接口会把 cookie 放进响应体，禁止渲染层直接访问（凭证只能留在后端）
 const BLOCKED = ['/login', '/logout', '/relogin', '/regvalid'];
@@ -826,6 +858,10 @@ const ready = new Promise((resolve, reject) => {
       healthProbe.init(DATA_DIR, { online: () => online });
       // 先初始化音源系统（读取已保存的音源脚本并执行）
       await sourceManager.init();
+      // 默认音源：首次启动自动导入 5 个社区音源，并定时探测洛雪列表页同步最新地址
+      soundSources.init(DATA_DIR, { online: () => online });
+      soundSources.attach(sourceManager);
+      soundSources.ensureImported().catch(() => {}); // 离线/脚本失效只 warn，不阻断启动
       console.log(`[host] 孤男音乐 后端已启动: http://127.0.0.1:${actualPort}（网易云 API 端口 ${ncmPort}）`);
       if (ENABLE_NCM) {
         startNetease(ncmPort);
@@ -835,6 +871,8 @@ const ready = new Promise((resolve, reject) => {
       } else {
         console.log('[api] 离线模式：内置示例曲库（设置 ENABLE_NCM=1 启用网易云在线曲库）');
       }
+      // 默认音源定时探测（与 NCM 无关，独立调度；离线环境探测失败只记日志）
+      soundSources.start();
       resolve(actualPort);
     } catch (e) {
       reject(e);

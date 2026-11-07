@@ -8,13 +8,13 @@
 
 在线网易云曲库 · 洛雪自定义音源 · 实时频谱 · 卡拉OK歌词 · 10 段均衡器 · 桌面歌词 · 本地音乐
 
-![Version](https://img.shields.io/badge/version-1.4.0-ff6a2c?style=flat-square)
+![Version](https://img.shields.io/badge/version-1.4.1-ff6a2c?style=flat-square)
 
 
 
 ![Electron](https://img.shields.io/badge/Electron-44-47848F?style=flat-square\&logo=electron\&logoColor=white)
 
-![Tests](https://img.shields.io/badge/tests-289%20checks-passing-3fb950?style=flat-square)
+![Tests](https://img.shields.io/badge/tests-306%20checks-passing-3fb950?style=flat-square)
 
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-8957e5?style=flat-square)
 
@@ -329,7 +329,7 @@ QQ / 酷狗 / 酷我 / 咪咕曲目的播放地址不强依赖网易云，也不
 
 ## 🧪 UI 回归测试
 
-基于 Playwright 的真实交互回归（共 **289 项断言**）：
+基于 Playwright 的真实交互回归（共 **306 项断言**）：
 
 ```bash
 npm start                        # 或 ENABLE_NCM=0 node server/index.js
@@ -342,6 +342,7 @@ node scripts/platform-url-check.js # 19 项多平台取链（匹配打分 + 酷�
 node scripts/version-check.js     # 5 项版本号契约（主进程/渲染层不重复加 v）
 node scripts/source-search-check.js # 23 项音源搜索（并行回退 + 能力查询 + 汽水）
 node scripts/lx-url-validate-check.js # 10 项音源取链 URL 校验（坏链拦截 + 换源兜底 + 负缓存）
+node scripts/sound-sources-check.js # 17 项默认音源（页面解析 + 自动导入幂等 + 地址变更更新）
 npx electron scripts/tray-check.js # 5 项托盘图标（ICO 空图回归 + 真实托盘坐标）
 npx electron scripts/cache-check.js # 7 项磁盘缓存（写入 → 统计 → 清理 → 幂等）
 node scripts/cache-e2e.js         # 7 项真机存储区验证（需图形界面，走完整 IPC）
@@ -361,6 +362,7 @@ node scripts/cache-e2e.js         # 7 项真机存储区验证（需图形界面
 - [x] **离线下载管理**：在线歌曲连同歌词、封面落盘本地曲库，断网或上游失效照样能播；支持下载路径、命名方式、配额自动清理
 - [x] **平台健康主动探测**：定时探测各平台搜索/取链可用性并持久化，首屏横幅提示「哪个平台从何时开始不可用」，设置页可看状态/故障记录、手动立即检测
 - [x] **音源取链 URL 校验与自动兜底**：取链结果做内容探测，死链/过期链自动切下一音源，全失败转交原生 + 跨平台兜底；播放失败自动换源重试一次
+- [x] **默认音源出厂内置 + 洛雪列表定时探测**：首次启动自动导入六音 / LX官方 / Flower / Huibq / JuheApi 五个社区音源并启用，定时探测 lxmusic.ijinshan.com 音源列表页同步最新地址，设置页可手动立即更新
 - [ ] 歌单双向编辑（在客户端内增删云端歌单）
 
 已支持 ✅：应用内自动更新（`electron-updater` + GitHub Releases 源，发布新版本后启动即提示）

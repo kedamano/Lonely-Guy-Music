@@ -142,6 +142,10 @@ export const api = {
   // 主动探测：一次完整探测要并发打六个平台，超时给足
   healthCheck: (force = false) => post('/platform/health/check', { force }, 95000),
   healthConfig: (payload) => post('/platform/health/config', payload),
+  // 默认音源：出厂内置 + 洛雪列表定时探测
+  soundSources: () => dataOf(request('/sound-sources')),
+  soundSourcesProbe: (force = false) => post('/sound-sources/probe', { force }, 60000),
+  soundSourcesConfig: (payload) => post('/sound-sources/config', payload),
   // 后端内存缓存（封面 LRU / 取链缓存）：设置页存储区展示与清理
   cacheStats: () => dataOf(request('/cache/stats')),
   clearCache: () => post('/cache/clear', {}),
