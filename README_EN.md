@@ -98,7 +98,7 @@ Grab the build for your platform from [**Releases**](https://github.com/kedamano
 | Linux x64 | `GumanMusic-x.y.z-x86_64.AppImage` | `chmod +x` and run |
 | Debian / Ubuntu | `GumanMusic-x.y.z-amd64.deb` | `sudo dpkg -i` |
 
-> **Signing & notarization**: since v1.4.3 the build pipeline fully supports Windows OV/EV code signing and macOS Developer ID signing + notarization. Certificates are read only from environment variables / GitHub Secrets, so **no certificate ships with the repo and default artifacts are still unsigned** — Windows may show SmartScreen ("More info → Run anyway") and macOS requires approval in System Settings → Privacy & Security. Once configured, CI signs automatically with no workflow changes; see [docs/code-signing.md](docs/code-signing.md).
+> **Signing & notarization**: since v1.4.3 the build pipeline supports Windows code signing and macOS Developer ID signing + notarization. Certificates are read only from environment variables / GitHub Secrets, so **no certificate ships with the repo and default artifacts are still unsigned** — Windows may show SmartScreen ("More info → Run anyway") and macOS requires approval in System Settings → Privacy & Security. On macOS the configured secrets enable signing + notarization automatically. On Windows, CAs stopped issuing exportable `.pfx` files in 2023, so public distribution requires a cloud signing service plus a post-build signing step in CI. See [docs/code-signing.md](docs/code-signing.md) for application steps and provider options.
 
 ### Option 2: Run from source
 
@@ -358,7 +358,7 @@ Upstream sources are maintained by third parties and can go offline. The app ski
 <details>
 <summary><b>SmartScreen blocks the installer?</b></summary>
 
-The repo ships no code-signing certificate, so default artifacts are unsigned. Click "More info → Run anyway" (Windows) or approve the app under System Settings → Privacy & Security (macOS). To remove the warning entirely, configure an OV/EV certificate and an Apple Developer ID per [docs/code-signing.md](docs/code-signing.md); CI then signs and notarizes automatically with no code changes.
+The repo ships no code-signing certificate, so default artifacts are unsigned. Click "More info → Run anyway" (Windows) or approve the app under System Settings → Privacy & Security (macOS). To show a verified publisher and remove the macOS Gatekeeper block, apply for certificates per [docs/code-signing.md](docs/code-signing.md): macOS signs and notarizes automatically once the secrets are set, while Windows needs a cloud signing service and a post-build signing step. Note that signing does not remove the SmartScreen warning instantly — a new certificate's publisher reputation builds over several weeks of real downloads, for OV / IV / EV alike.
 </details>
 
 <details>

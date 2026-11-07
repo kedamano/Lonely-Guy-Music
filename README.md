@@ -130,7 +130,7 @@
 | Linux x64       | `GumanMusic-x.y.z-x86_64.AppImage` | 免安装，`chmod +x` 后直接运行         |
 | Debian / Ubuntu | `GumanMusic-x.y.z-amd64.deb`       | `sudo dpkg -i` 安装            |
 
-> **签名与公证**：v1.4.3 起打包链路已完整支持 Windows OV/EV 代码签名与 macOS Developer ID 签名 + 公证，证书只从环境变量 / GitHub Secrets 读取。仓库不含证书，因此**默认产物仍是未签名包**——Windows 首次运行 SmartScreen 点「更多信息 → 仍要运行」，macOS 在「系统设置 → 隐私与安全性」放行。配置证书后自动签名、无需改 workflow，步骤见 [docs/code-signing.md](docs/code-signing.md)。
+> **签名与公证**：v1.4.3 起打包链路已支持 Windows 代码签名与 macOS Developer ID 签名 + 公证，证书只从环境变量 / GitHub Secrets 读取。仓库不含证书，因此**默认产物仍是未签名包**——Windows 首次运行 SmartScreen 点「更多信息 → 仍要运行」，macOS 在「系统设置 → 隐私与安全性」放行。macOS 配好 Secrets 即自动签名 + 公证；Windows 因 2023 年起 CA 不再发放可导出的 `.pfx`，正式分发需选云签名服务并补一个 CI 后置签名 step。申请步骤与路径选型见 [docs/code-signing.md](docs/code-signing.md)。
 
 ### 方式二：从源码运行
 
@@ -398,7 +398,7 @@ node scripts/cache-e2e.js         # 7 项真机存储区验证（需图形界面
 <details>
 <summary><b>为什么装完打不开 / SmartScreen 拦截？</b></summary>
 
-仓库不含代码签名证书，默认产物未签名。SmartScreen 提示时点击「更多信息 → 仍要运行」，macOS 则在「系统设置 → 隐私与安全性」放行。若要让提示彻底消失，按 [docs/code-signing.md](docs/code-signing.md) 配置 OV/EV 证书与 Apple Developer ID；配置后 CI 会自动签名 + 公证，无需改任何代码。
+仓库不含代码签名证书，默认产物未签名。SmartScreen 提示时点击「更多信息 → 仍要运行」，macOS 则在「系统设置 → 隐私与安全性」放行。要显示已验证的发布者并消除 macOS Gatekeeper 拦截，按 [docs/code-signing.md](docs/code-signing.md) 申请证书：macOS 配好 Secrets 即自动签名 + 公证；Windows 需选云签名服务并补一个 CI 后置签名步骤。注意签名不能让 SmartScreen 警告立刻消失——新证书的发布者信誉需要随下载量积累几周，OV / IV / EV 都一样。
 </details>
 
 <details>
